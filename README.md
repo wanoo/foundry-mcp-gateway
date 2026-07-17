@@ -141,16 +141,35 @@ All modules are loaded by default; restrict with `FOUNDRY_SYSTEMS=starwarsffg,dn
 - **Annotations**: read-only tools are flagged so clients can auto-approve them;
   only the two `delete_*` tools are marked destructive.
 
-## Client-side actions (optional companion)
+## Client-side actions (optional companion) — 14 tools
 
 The socket protocol can only touch *documents*. To reach the browser-only client
-API — run macros, roll with the real system engine + Dice So Nice 3D, pan/ping
-cameras, play stingers, drive the Campaign Codex API, read client telemetry —
-install the optional **[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**
-module. It adds 14 `client_*` tools (`client_run_macro`, `client_pan_camera`,
-`client_roll_pool_native`, `client_cc_convert`, `client_get_state`…). Without it,
-the `client_*` tools simply time out with a clear message; everything else works
-unchanged. See that module's README for the full list.
+API, install the optional **[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**
+module. It adds these 14 `client_*` tools. Without it they simply time out with a
+clear message; everything else works unchanged.
+
+| Tool | What it does (client-side) |
+|---|---|
+| `client_status` | Is the companion installed/active? Returns its version, the responding GM, and which optional deps (Dice So Nice, Campaign Codex, Sequencer) are available |
+| `client_run_macro` | Run any Foundry macro by _id or name on the GM client (returns its value) — the universal key to anything scriptable |
+| `client_run_script` | Run arbitrary async JS on the GM client (⚠️ off by default; the GM must enable it in the module settings) |
+| `client_roll_pool_native` | *starwarsffg*: roll a pool with the real FFG engine — native chat card + **Dice So Nice** 3D dice on the table |
+| `client_pan_camera` | Pan/zoom the targeted clients' cameras — "everyone look here" (x/y or a token _id) |
+| `client_ping` | Ping a point on the map for the targeted clients |
+| `client_play_sound` | One-shot sound (a dramatic stinger) on the targeted clients, no playlist needed |
+| `client_notify` | UI notification (info/warn/error) on the targeted clients |
+| `client_show_document` | Open a document sheet (by uuid) on the targeted clients |
+| `client_play_effect` | A [Sequencer](https://foundryvtt.com/packages/sequencer) visual effect at a token or point (if installed) |
+| `client_cc_convert` | [Campaign Codex](https://foundryvtt.com/packages/campaign-codex): convert a Journal Entry into a CC sheet — great for bulk migration |
+| `client_cc_export_obsidian` | Campaign Codex: export the whole codex to a Markdown/Obsidian zip |
+| `client_cc_open_toc` | Campaign Codex: open the Table of Contents on the GM client |
+| `client_get_state` | Telemetry: active users, each one's viewed scene & character. Live selections/targets stream via `get_events` |
+
+Scene actions (`client_pan_camera`, `client_ping`, `client_play_sound`,
+`client_notify`, `client_show_document`) accept a `targets` argument
+(`all` / `gm` / `players` / list of user _ids). Optional integrations degrade
+gracefully: `client_roll_pool_native` needs starwarsffg, `client_play_effect`
+needs Sequencer, `client_cc_*` need Campaign Codex.
 
 ## Contributing a game system
 

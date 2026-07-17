@@ -143,17 +143,37 @@ Tous les modules sont chargés par défaut ; restreignez avec
 - **Annotations** : les outils en lecture seule sont marqués (auto-approbables
   par les clients) ; seuls les deux `delete_*` sont marqués destructifs.
 
-## Actions côté client (module compagnon optionnel)
+## Actions côté client (module compagnon optionnel) — 14 outils
 
 Le protocole socket ne touche que des *documents*. Pour atteindre l'API
-navigateur — exécuter des macros, lancer avec le vrai moteur système + les dés
-3D Dice So Nice, déplacer/pinger les caméras, jouer un *stinger*, piloter l'API
-Campaign Codex, lire la télémétrie des clients — installez le module optionnel
-**[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**. Il
-ajoute 14 outils `client_*` (`client_run_macro`, `client_pan_camera`,
-`client_roll_pool_native`, `client_cc_convert`, `client_get_state`…). Sans lui,
-les outils `client_*` expirent avec un message clair ; tout le reste fonctionne
-à l'identique. Liste complète dans le README de ce module.
+navigateur, installez le module optionnel
+**[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**.
+Il ajoute ces 14 outils `client_*`. Sans lui, ils expirent avec un message clair ;
+tout le reste fonctionne à l'identique.
+
+| Outil | Ce qu'il fait (côté navigateur) |
+|---|---|
+| `client_status` | Le compagnon est-il installé/actif ? Renvoie sa version, le MJ qui répond, et quelles dépendances optionnelles (Dice So Nice, Campaign Codex, Sequencer) sont disponibles |
+| `client_run_macro` | Exécute n'importe quelle macro Foundry (par _id ou nom) sur le client MJ (renvoie sa valeur) — le passe-partout vers tout ce qui est scriptable |
+| `client_run_script` | Exécute du JS async arbitraire sur le client MJ (⚠️ désactivé par défaut ; le MJ doit l'activer dans les réglages du module) |
+| `client_roll_pool_native` | *starwarsffg* : lance un pool avec le vrai moteur FFG — carte de chat native + dés 3D **Dice So Nice** sur la table |
+| `client_pan_camera` | Déplace/zoome la caméra des clients ciblés — « regardez tous ici » (x/y ou un _id de token) |
+| `client_ping` | Ping un point de la carte pour les clients ciblés |
+| `client_play_sound` | Son ponctuel (un *stinger* dramatique) sur les clients ciblés, sans playlist |
+| `client_notify` | Notification UI (info/warn/error) sur les clients ciblés |
+| `client_show_document` | Ouvre une fiche (par uuid) sur les clients ciblés |
+| `client_play_effect` | Un effet visuel [Sequencer](https://foundryvtt.com/packages/sequencer) sur un token ou un point (si installé) |
+| `client_cc_convert` | [Campaign Codex](https://foundryvtt.com/packages/campaign-codex) : convertit un journal en fiche CC — idéal pour une migration en masse |
+| `client_cc_export_obsidian` | Campaign Codex : exporte tout le codex en zip Markdown/Obsidian |
+| `client_cc_open_toc` | Campaign Codex : ouvre la table des matières sur le client MJ |
+| `client_get_state` | Télémétrie : utilisateurs actifs, scène affichée et personnage de chacun. Les sélections/cibles en direct arrivent via `get_events` |
+
+Les actions de scène (`client_pan_camera`, `client_ping`, `client_play_sound`,
+`client_notify`, `client_show_document`) acceptent un argument `targets`
+(`all` / `gm` / `players` / liste d'_id d'utilisateurs). Les intégrations
+optionnelles dégradent proprement : `client_roll_pool_native` requiert
+starwarsffg, `client_play_effect` requiert Sequencer, `client_cc_*` requièrent
+Campaign Codex.
 
 ## Contribuer un système de jeu
 
