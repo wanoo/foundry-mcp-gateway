@@ -22,7 +22,7 @@ gérer vos compendiums, préparer vos séances — 24 h/24, tant que le monde to
 - **Rapide** — lectures par collection (jamais de dump complet du monde hors
   `get_world`), filtres poussés côté serveur, listings par index de base de
   données : ~7 000 journaux listés en ~0,3 s.
-- **78 outils** — CRUD générique des documents, outils MJ de séance (montrer un
+- **100 outils** — CRUD générique des documents, outils MJ de séance (montrer un
   journal aux joueurs, combats, playlists, tokens…), plus des **modules de
   systèmes de jeu** (Star Wars FFG, D&D 5e, Daggerheart) que chacun peut étendre.
 - **Bon citoyen MCP** — annotations d'outils (lecture seule/destructif),
@@ -104,7 +104,7 @@ Claude Desktop : *Paramètres → Connecteurs → Ajouter un connecteur personna
 avec la même URL (le secret vit dans l'URL car Desktop ne sait pas poser
 d'en-têtes).
 
-## Les 78 outils
+## Les 100 outils
 
 ### Génériques (66) — pour tous les systèmes de jeu
 
@@ -115,7 +115,7 @@ d'en-têtes).
 | **Compendiums** | `list_compendium_packs`, `get_pack_documents`, `import_from_compendium`, `create_compendium`, `delete_compendium` | l'index BDD sert aussi aux packs |
 | **Fichiers** | `browse_files`, `create_directory`, `upload_file` (URL ou base64) | |
 | **Séance (MJ)** | `show_journal_to_players`, `share_image`, `toggle_pause`, `activate_scene`, `get_current_scene`, `pull_users_to_scene`, `list_tokens`, `place_token`, `move_token`, `update_token`, `toggle_actor_condition` (27 statuts core), `manage_combat` (création/initiative/tours/statut/fin), `control_playlist`, `draw_from_table` (tables d100 de critiques & co) | |
-| **Campaign Codex** | `cc_list_sheets`, `cc_get_sheet`, `cc_create_sheet`, `cc_link` (bidirectionnel) | pour le module [Campaign Codex](https://foundryvtt.com/packages/campaign-codex) |
+| **Addons famille CC** | Campaign Codex, Asset Librarian, Mini Calendar — voir la section dédiée ci-dessous | suite [wgtnGM](https://campaigncodex.wgtngm.com/) |
 | **Événements** | `get_events` (polling incrémental), `wait_for_message` (attente bloquante d'un message d'un autre client) | |
 | **Divers** | `ping` (santé, léger), `get_world`, `search_journals` (plein-texte), `export_journals` (Markdown), `set_setting`, `list_actor_ownership`, `set_actor_ownership`, `show_credentials`, `choose_foundry_instance` | |
 
@@ -130,6 +130,17 @@ d'en-têtes).
 Tous les modules sont chargés par défaut ; restreignez avec
 `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
 
+### Addons famille CC — la suite [wgtnGM](https://campaigncodex.wgtngm.com/)
+
+Outils regroupés pour la famille de modules Campaign Codex. Les outils serveur
+agissent sur les documents ; les `client_*` requièrent le module compagnon.
+
+| Addon | Outils |
+|---|---|
+| **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** | `cc_list_sheets`, `cc_get_sheet`, `cc_create_sheet`, `cc_link` (bidirectionnel) · compagnon : `client_cc_convert` (journal → fiche CC, migration en masse), `client_cc_export_obsidian`, `client_cc_open_toc` |
+| **Asset Librarian** | `al_tag` / `al_find` (lire & écrire les tags `flags.asset-librarian` sur les documents) · compagnon : `client_al_open` (navigateur d'assets filtré) |
+| **Mini Calendar** | `mc_get_time` / `mc_set_time` (temps du monde via `core.time`), `mc_list_notes` (journaux de notes du calendrier) · compagnon : `client_mc_set_time` (dont dawn/dusk), `client_mc_open` |
+
 ### Capacités MCP au-delà des outils
 
 - **Resources** : parcourez les acteurs (JSON) et journaux (HTML, données
@@ -143,12 +154,12 @@ Tous les modules sont chargés par défaut ; restreignez avec
 - **Annotations** : les outils en lecture seule sont marqués (auto-approbables
   par les clients) ; seuls les deux `delete_*` sont marqués destructifs.
 
-## Actions côté client (module compagnon optionnel) — 14 outils
+## Actions côté client (module compagnon optionnel) — 11 outils
 
 Le protocole socket ne touche que des *documents*. Pour atteindre l'API
 navigateur, installez le module optionnel
 **[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**.
-Il ajoute ces 14 outils `client_*`. Sans lui, ils expirent avec un message clair ;
+Il ajoute ces 11 outils `client_*`. Sans lui, ils expirent avec un message clair ;
 tout le reste fonctionne à l'identique.
 
 | Outil | Ce qu'il fait (côté navigateur) |
@@ -163,9 +174,6 @@ tout le reste fonctionne à l'identique.
 | `client_notify` | Notification UI (info/warn/error) sur les clients ciblés |
 | `client_show_document` | Ouvre une fiche (par uuid) sur les clients ciblés |
 | `client_play_effect` | Un effet visuel [Sequencer](https://foundryvtt.com/packages/sequencer) sur un token ou un point (si installé) |
-| `client_cc_convert` | [Campaign Codex](https://foundryvtt.com/packages/campaign-codex) : convertit un journal en fiche CC — idéal pour une migration en masse |
-| `client_cc_export_obsidian` | Campaign Codex : exporte tout le codex en zip Markdown/Obsidian |
-| `client_cc_open_toc` | Campaign Codex : ouvre la table des matières sur le client MJ |
 | `client_get_state` | Télémétrie : utilisateurs actifs, scène affichée et personnage de chacun. Les sélections/cibles en direct arrivent via `get_events` |
 
 Les actions de scène (`client_pan_camera`, `client_ping`, `client_play_sound`,
