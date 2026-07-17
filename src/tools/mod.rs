@@ -3,6 +3,7 @@
 //! et les modules système arrivent par lots.)
 
 pub mod cc;
+pub mod companion;
 pub mod manage;
 pub mod markdown;
 pub mod session;
@@ -138,7 +139,10 @@ fn truncate_by_bytes(mut docs: Vec<Value>, max_length: Option<usize>) -> Vec<Val
 fn annotations(name: &str) -> Value {
     let read_only = name.starts_with("get_")
         || name.starts_with("list_")
-        || matches!(name, "search_journals" | "ping" | "export_journals");
+        || matches!(
+            name,
+            "search_journals" | "ping" | "export_journals" | "client_status" | "client_get_state"
+        );
     let destructive = matches!(name, "delete_document" | "delete_compendium");
     json!({ "readOnlyHint": read_only, "destructiveHint": destructive })
 }
@@ -264,6 +268,7 @@ pub fn definitions() -> Vec<Value> {
         .into_iter()
         .chain(manage::definitions())
         .chain(cc::definitions())
+        .chain(companion::definitions())
         .chain(
             systems::loaded_modules()
                 .iter()
@@ -301,6 +306,8 @@ pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Valu
         manage::run(state, name, args).await
     } else if cc::handles(name) {
         cc::run(state, name, args).await
+    } else if companion::handles(name) {
+        companion::run(state, name, args).await
     } else if systems::loaded_modules().iter().any(|m| (m.handles)(name)) {
         systems::run(state, name, args).await
     } else {

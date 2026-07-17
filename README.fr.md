@@ -143,6 +143,18 @@ Tous les modules sont chargés par défaut ; restreignez avec
 - **Annotations** : les outils en lecture seule sont marqués (auto-approbables
   par les clients) ; seuls les deux `delete_*` sont marqués destructifs.
 
+## Actions côté client (module compagnon optionnel)
+
+Le protocole socket ne touche que des *documents*. Pour atteindre l'API
+navigateur — exécuter des macros, lancer avec le vrai moteur système + les dés
+3D Dice So Nice, déplacer/pinger les caméras, jouer un *stinger*, piloter l'API
+Campaign Codex, lire la télémétrie des clients — installez le module optionnel
+**[foundry-mcp-companion](https://github.com/wanoo/foundry-mcp-companion)**. Il
+ajoute 14 outils `client_*` (`client_run_macro`, `client_pan_camera`,
+`client_roll_pool_native`, `client_cc_convert`, `client_get_state`…). Sans lui,
+les outils `client_*` expirent avec un message clair ; tout le reste fonctionne
+à l'identique. Liste complète dans le README de ce module.
+
 ## Contribuer un système de jeu
 
 Le cœur est 100 % agnostique ; tout le spécifique vit dans `src/systems/`, un
