@@ -22,7 +22,7 @@ compendia, prep your sessions — 24/7, as long as your world is up.
 - **Fast** — per-collection reads (never a full world dump except `get_world`),
   server-side query pushdown, database-index listings: ~7,000 journals listed
   in ~0.3 s.
-- **100 tools** — generic document CRUD, session-time GM tools (show journals to
+- **104 tools** — generic document CRUD, session-time GM tools (show journals to
   players, combats, playlists, tokens…), plus **game-system modules**
   (Star Wars FFG, D&D 5e, Daggerheart) that anyone can extend.
 - **A good MCP citizen** — tool annotations (read-only/destructive), paginated
@@ -104,7 +104,7 @@ claude mcp add foundry --transport http https://YOUR-DEPLOYMENT/mcp-<secret>
 Claude Desktop: *Settings → Connectors → Add custom connector* with the same URL
 (the secret lives in the URL because Desktop cannot send custom headers).
 
-## The 100 tools
+## The 104 tools
 
 ### Generic (66) — work with any game system
 
@@ -139,6 +139,13 @@ on documents; the `client_*` ones need the optional companion module.
 | **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** | `cc_list_sheets`, `cc_get_sheet`, `cc_create_sheet`, `cc_link` (bidirectional) · companion: `client_cc_convert` (journal → CC sheet, bulk migration), `client_cc_export_obsidian`, `client_cc_open_toc` |
 | **Asset Librarian** | `al_tag` / `al_find` (read & write `flags.asset-librarian` tags on documents) · companion: `client_al_open` (open the filtered asset browser) |
 | **Mini Calendar** | `mc_get_time` / `mc_set_time` (world time via `core.time`), `mc_list_notes` (the calendar note journals) · companion: `client_mc_set_time` (incl. dawn/dusk), `client_mc_open` |
+
+### Other addon integrations
+
+| Addon | Tools |
+|---|---|
+| **[Monk's Active Tile Triggers](https://foundryvtt.com/packages/monks-active-tiles)** | `mat_list` (trigger-tiles of a scene) · companion: `client_mat_trigger` (fire a tile's action chain — teleport, scene change, macros…) |
+| **[Sequencer](https://foundryvtt.com/packages/sequencer)** | companion: `client_play_effect` (at a token/point), `client_seq_between` (effect from one token to another — attacks/projectiles), `client_seq_sound` |
 
 ### MCP capabilities beyond tools
 

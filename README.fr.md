@@ -22,7 +22,7 @@ gérer vos compendiums, préparer vos séances — 24 h/24, tant que le monde to
 - **Rapide** — lectures par collection (jamais de dump complet du monde hors
   `get_world`), filtres poussés côté serveur, listings par index de base de
   données : ~7 000 journaux listés en ~0,3 s.
-- **100 outils** — CRUD générique des documents, outils MJ de séance (montrer un
+- **104 outils** — CRUD générique des documents, outils MJ de séance (montrer un
   journal aux joueurs, combats, playlists, tokens…), plus des **modules de
   systèmes de jeu** (Star Wars FFG, D&D 5e, Daggerheart) que chacun peut étendre.
 - **Bon citoyen MCP** — annotations d'outils (lecture seule/destructif),
@@ -104,7 +104,7 @@ Claude Desktop : *Paramètres → Connecteurs → Ajouter un connecteur personna
 avec la même URL (le secret vit dans l'URL car Desktop ne sait pas poser
 d'en-têtes).
 
-## Les 100 outils
+## Les 104 outils
 
 ### Génériques (66) — pour tous les systèmes de jeu
 
@@ -140,6 +140,13 @@ agissent sur les documents ; les `client_*` requièrent le module compagnon.
 | **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** | `cc_list_sheets`, `cc_get_sheet`, `cc_create_sheet`, `cc_link` (bidirectionnel) · compagnon : `client_cc_convert` (journal → fiche CC, migration en masse), `client_cc_export_obsidian`, `client_cc_open_toc` |
 | **Asset Librarian** | `al_tag` / `al_find` (lire & écrire les tags `flags.asset-librarian` sur les documents) · compagnon : `client_al_open` (navigateur d'assets filtré) |
 | **Mini Calendar** | `mc_get_time` / `mc_set_time` (temps du monde via `core.time`), `mc_list_notes` (journaux de notes du calendrier) · compagnon : `client_mc_set_time` (dont dawn/dusk), `client_mc_open` |
+
+### Autres intégrations d'addons
+
+| Addon | Outils |
+|---|---|
+| **[Monk's Active Tile Triggers](https://foundryvtt.com/packages/monks-active-tiles)** | `mat_list` (tuiles-actions d'une scène) · compagnon : `client_mat_trigger` (déclenche la chaîne d'actions — téléport, changement de scène, macros…) |
+| **[Sequencer](https://foundryvtt.com/packages/sequencer)** | compagnon : `client_play_effect` (sur un token/point), `client_seq_between` (effet d'un token vers un autre — attaques/projectiles), `client_seq_sound` |
 
 ### Capacités MCP au-delà des outils
 
