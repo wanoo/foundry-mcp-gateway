@@ -146,7 +146,7 @@ All modules are loaded by default; restrict with `FOUNDRY_SYSTEMS=starwarsffg,dn
 The socket protocol can only touch *documents*. To reach the browser-only client
 API — run macros, roll with the real system engine + Dice So Nice 3D, pan/ping
 cameras, play stingers, drive the Campaign Codex API, read client telemetry —
-install the optional **[foundry-mcp-companion](https://github.com/wanoo/foundry-mcp-companion)**
+install the optional **[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**
 module. It adds 14 `client_*` tools (`client_run_macro`, `client_pan_camera`,
 `client_roll_pool_native`, `client_cc_convert`, `client_get_state`…). Without it,
 the `client_*` tools simply time out with a clear message; everything else works

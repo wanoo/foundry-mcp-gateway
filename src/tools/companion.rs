@@ -1,9 +1,9 @@
-//! Outils `client_*` : délèguent au module Foundry « foundry-mcp-companion »
+//! Outils `client_*` : délèguent au module Foundry « foundry-mcp-gateway-companion »
 //! (côté navigateur) les actions que le protocole socket seul ne peut pas faire
 //! — exécuter des macros, vrais jets système (Dice So Nice), caméra, sons,
 //! notifications, API Campaign Codex, télémétrie des clients.
 //!
-//! Mécanique : on émet une commande sur le canal `module.foundry-mcp-companion`
+//! Mécanique : on émet une commande sur le canal `module.foundry-mcp-gateway-companion`
 //! et on attend la réponse dans le buffer d'événements. Si aucun module n'est
 //! installé/actif, la commande expire avec un message explicite.
 
@@ -14,14 +14,14 @@ use std::time::Duration;
 use super::{str_arg, text_response};
 use crate::mcp::McpState;
 
-const CHANNEL: &str = "module.foundry-mcp-companion";
+const CHANNEL: &str = "module.foundry-mcp-gateway-companion";
 
 /// Convention `targets` (commandes de scène) : "all" (défaut), "gm", "players",
 /// ou un tableau d'_id d'utilisateurs.
 pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         ("client_status",
-         "Check the companion module: is foundry-mcp-companion installed and active? Returns its version, the responding GM, and which optional deps (Dice So Nice, Campaign Codex, Sequencer) are available.",
+         "Check the companion module: is foundry-mcp-gateway-companion installed and active? Returns its version, the responding GM, and which optional deps (Dice So Nice, Campaign Codex, Sequencer) are available.",
          json!({"type":"object","properties":{}})),
         ("client_run_macro",
          "Run a Foundry macro by _id or name on the GM client (returns its return value). Unlocks anything scriptable that the socket API cannot do.",
@@ -118,7 +118,7 @@ async fn call_companion(
 
     let event = matched.ok_or_else(|| {
         anyhow!(
-            "no companion module responded to '{cmd}' — is foundry-mcp-companion installed and active, with a GM browser connected?"
+            "no companion module responded to '{cmd}' — is foundry-mcp-gateway-companion installed and active, with a GM browser connected?"
         )
     })?;
     let payload = event.args.into_iter().next().unwrap_or(Value::Null);
