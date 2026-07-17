@@ -2,6 +2,7 @@
 //! couvre lectures/écritures/packs/recherche/événements ; les outils de séance
 //! et les modules système arrivent par lots.)
 
+pub mod addons;
 pub mod cc_family;
 pub mod companion;
 pub mod manage;
@@ -268,6 +269,7 @@ pub fn definitions() -> Vec<Value> {
         .into_iter()
         .chain(manage::definitions())
         .chain(cc_family::definitions())
+        .chain(addons::definitions())
         .chain(companion::definitions())
         .chain(
             systems::loaded_modules()
@@ -306,6 +308,8 @@ pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Valu
         manage::run(state, name, args).await
     } else if cc_family::handles(name) {
         cc_family::run(state, name, args).await
+    } else if addons::handles(name) {
+        addons::run(state, name, args).await
     } else if companion::handles(name) {
         companion::run(state, name, args).await
     } else if systems::loaded_modules().iter().any(|m| (m.handles)(name)) {
