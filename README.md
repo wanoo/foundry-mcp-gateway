@@ -35,13 +35,14 @@ est l'`_id` du document User (16 caractères).
 
 ## Outils
 
-Lectures génériques (13 collections × liste/unitaire, `where` à chemins pointés
-et opérateurs `__in`/`__contains`/`__ne`/`__exists`, projection, pagination),
-écritures (`create/modify/delete_document`, documents imbriqués via
-`parent_uuid`, compendiums via `pack`), packs, recherche plein-texte,
-événements. *(Portage en cours depuis l'implémentation TypeScript de référence :
-outils de séance, Campaign Codex, combat, playlists et modules de systèmes de
-jeu — starwarsffg, dnd5e, daggerheart — arrivent par lots.)*
+**78 outils.** Lectures génériques (13 collections × liste/unitaire, `where` à
+chemins pointés et opérateurs, projection, pagination, index BDD), écritures
+(documents imbriqués, compendiums, `keep_id`), packs, recherche plein-texte,
+fichiers (upload/browse/mkdir), outils de séance (diffusion aux joueurs,
+scènes, tokens, conditions, combat, playlists, tables), Campaign Codex,
+événements (`get_events`, `wait_for_message`), et **modules de systèmes de
+jeu** : starwarsffg (dés narratifs + dérivation des fiches), dnd5e (moteur d20
+SRD), daggerheart (dés de Dualité) — extensibles via `src/systems/`.
 
 ## Licence
 

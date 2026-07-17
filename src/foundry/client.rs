@@ -41,8 +41,14 @@ struct Shared {
     event_tx: broadcast::Sender<BufferedEvent>,
     generation: Mutex<Option<u32>>,
     user_id: Mutex<Option<String>>,
-    hostname: String,
+    session_id: Mutex<Option<String>>,
+    credentials: Vec<Credential>,
+    active_index: std::sync::atomic::AtomicUsize,
 }
+
+/// Sentinelle interne : force la fermeture de la connexion (changement
+/// d'instance) — jamais envoyée sur le réseau.
+const RECONNECT_SENTINEL: &str = "\u{1}RECONNECT";
 
 #[derive(Clone)]
 pub struct FoundryHandle {
@@ -54,8 +60,46 @@ impl FoundryHandle {
     pub fn is_connected(&self) -> bool {
         self.shared.connected.load(Ordering::SeqCst)
     }
-    pub fn hostname(&self) -> &str {
-        &self.shared.hostname
+    pub fn hostname(&self) -> String {
+        let i = self.shared.active_index.load(Ordering::SeqCst);
+        self.shared
+            .credentials
+            .get(i)
+            .map(|c| c.hostname.clone())
+            .unwrap_or_default()
+    }
+    pub async fn session_id(&self) -> Option<String> {
+        self.shared.session_id.lock().await.clone()
+    }
+    /// Credentials configurés (sans mot de passe) + index actif.
+    pub fn credentials_info(&self) -> (usize, Vec<Value>) {
+        let active = self.shared.active_index.load(Ordering::SeqCst);
+        let list = self
+            .shared
+            .credentials
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                json!({
+                    "item_order": i,
+                    "_id": c.id,
+                    "hostname": c.hostname,
+                    "userid": c.userid,
+                    "active": i == active,
+                })
+            })
+            .collect();
+        (active, list)
+    }
+    /// Bascule d'instance : change l'index actif et force la reconnexion.
+    pub async fn choose_instance(&self, index: usize) -> Result<()> {
+        if index >= self.shared.credentials.len() {
+            bail!("index d'instance invalide : {index}");
+        }
+        self.shared.active_index.store(index, Ordering::SeqCst);
+        // si connecté : la sentinelle fait tomber la connexion → reconnexion
+        let _ = self.shared.outgoing.send(RECONNECT_SENTINEL.to_string()).await;
+        Ok(())
     }
     pub async fn user_id(&self) -> Option<String> {
         self.shared.user_id.lock().await.clone()
@@ -230,6 +274,101 @@ impl FoundryHandle {
         }
         self.get_document(collection, None, Some(id_or_name), fields).await
     }
+
+    /// « manageFiles » (browse, createDirectory) — mêmes payloads que FilePicker.
+    pub async fn manage_files(&self, data: Value, options: Value) -> Result<Value> {
+        let mut reply = self.emit_with_ack("manageFiles", &[data, options]).await?;
+        let result = if reply.is_empty() { Value::Null } else { reply.remove(0) };
+        if let Some(err) = result.get("error") {
+            if !err.is_null() {
+                bail!("manageFiles : {err}");
+            }
+        }
+        Ok(result)
+    }
+
+    /// « manageCompendium » (create / delete de packs).
+    pub async fn manage_compendium(&self, action: &str, data: Value) -> Result<Value> {
+        let payload = json!({ "action": action, "data": data, "options": {} });
+        let mut reply = self.emit_with_ack("manageCompendium", &[payload]).await?;
+        let result = if reply.is_empty() { Value::Null } else { reply.remove(0) };
+        if let Some(err) = result.get("error") {
+            if !err.is_null() {
+                bail!("manageCompendium {action} : {err}");
+            }
+        }
+        Ok(result)
+    }
+
+    /// Upload HTTP multipart vers /upload (cookie de session requis).
+    pub async fn upload_file(
+        &self,
+        target: &str,
+        filename: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+    ) -> Result<Value> {
+        let session = self
+            .session_id()
+            .await
+            .ok_or_else(|| anyhow!("Not connected to Foundry server"))?;
+        let hostname = self.hostname();
+        let (host, base) = super::auth::split_host(&hostname);
+        let url = format!("https://{host}{base}/upload");
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(filename.to_string())
+            .mime_str(content_type)?;
+        let form = reqwest::multipart::Form::new()
+            .text("source", "data")
+            .text("target", target.to_string())
+            .part("upload", part);
+        let resp = self
+            .http
+            .post(&url)
+            .header(reqwest::header::COOKIE, format!("session={session}"))
+            .multipart(form)
+            .send()
+            .await?;
+        let body: Value = resp.json().await.unwrap_or(Value::Null);
+        if let Some(err) = body.get("error") {
+            if !err.is_null() {
+                bail!("upload : {err}");
+            }
+        }
+        Ok(body)
+    }
+
+    /// Attend un événement matchant `predicate` (scan du buffer depuis
+    /// `since_seq`, puis flux live), avec timeout. `None` = délai dépassé.
+    pub async fn wait_for_event<F>(
+        &self,
+        since_seq: u64,
+        timeout: std::time::Duration,
+        predicate: F,
+    ) -> Option<BufferedEvent>
+    where
+        F: Fn(&BufferedEvent) -> bool,
+    {
+        {
+            let buf = self.shared.events.lock().await;
+            if let Some(e) = buf.iter().find(|e| e.seq > since_seq && predicate(e)) {
+                return Some(e.clone());
+            }
+        }
+        let mut rx = self.subscribe_events();
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            match tokio::time::timeout_at(deadline, rx.recv()).await {
+                Ok(Ok(e)) => {
+                    if e.seq > since_seq && predicate(&e) {
+                        return Some(e);
+                    }
+                }
+                Ok(Err(_)) => rx = self.subscribe_events(),
+                Err(_) => return None,
+            }
+        }
+    }
 }
 
 /// Lance le client : rend le handle immédiatement, la connexion (et la
@@ -237,10 +376,6 @@ impl FoundryHandle {
 pub fn spawn(credentials: Vec<Credential>) -> FoundryHandle {
     let (out_tx, out_rx) = mpsc::channel::<String>(256);
     let (event_tx, _) = broadcast::channel(256);
-    let hostname = credentials
-        .first()
-        .map(|c| c.hostname.clone())
-        .unwrap_or_default();
     let shared = Arc::new(Shared {
         connected: AtomicBool::new(false),
         ack_seq: AtomicU64::new(1),
@@ -251,26 +386,27 @@ pub fn spawn(credentials: Vec<Credential>) -> FoundryHandle {
         event_tx,
         generation: Mutex::new(None),
         user_id: Mutex::new(None),
-        hostname,
+        session_id: Mutex::new(None),
+        credentials,
+        active_index: std::sync::atomic::AtomicUsize::new(0),
     });
     let http = reqwest::Client::builder()
-        .user_agent("foundry-mcp-rs")
+        .user_agent("foundry-mcp-gateway")
         .build()
         .expect("client http");
     let handle = FoundryHandle { shared: shared.clone(), http: http.clone() };
-    tokio::spawn(run_loop(shared, http, credentials, out_rx));
+    tokio::spawn(run_loop(shared, http, out_rx));
     handle
 }
 
 async fn run_loop(
     shared: Arc<Shared>,
     http: reqwest::Client,
-    credentials: Vec<Credential>,
     mut out_rx: mpsc::Receiver<String>,
 ) {
     let mut delay = std::time::Duration::from_secs(5);
     loop {
-        match connect_once(&shared, &http, &credentials, &mut out_rx).await {
+        match connect_once(&shared, &http, &mut out_rx).await {
             Ok(()) => {
                 // connexion terminée proprement (coupure) : repartir vite
                 delay = std::time::Duration::from_secs(5);
@@ -290,16 +426,20 @@ async fn run_loop(
 async fn connect_once(
     shared: &Arc<Shared>,
     http: &reqwest::Client,
-    credentials: &[Credential],
     out_rx: &mut mpsc::Receiver<String>,
 ) -> Result<()> {
-    let cred = credentials.first().context("aucun credential configuré")?;
+    let index = shared.active_index.load(Ordering::SeqCst);
+    let cred = shared
+        .credentials
+        .get(index)
+        .context("aucun credential configuré")?;
     let generation = auth::detect_generation(http, &cred.hostname).await;
     *shared.generation.lock().await = generation;
     info!(hostname = %cred.hostname, ?generation, "connexion Foundry…");
 
     let session = auth::get_session(http, &cred.hostname).await?;
     auth::authenticate(http, &cred.hostname, &session, cred).await?;
+    *shared.session_id.lock().await = Some(session.clone());
 
     let (url, cookie) = auth::socket_url_and_cookie(&cred.hostname, &session, generation);
     let mut request = url.clone().into_client_request()?;
@@ -323,6 +463,9 @@ async fn connect_once(
     loop {
         tokio::select! {
             Some(frame) = out_rx.recv() => {
+                if frame == RECONNECT_SENTINEL {
+                    bail!("reconnexion demandée (changement d'instance)");
+                }
                 sink.send(Message::Text(frame.into())).await.context("envoi WS")?;
             }
             msg = stream.next() => {

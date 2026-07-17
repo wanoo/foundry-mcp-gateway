@@ -27,23 +27,27 @@ sur l'app Clever `foundry-mcp-gateway` jusqu'à parité.
   POST=JSON, GET=SSE notifications, DELETE. Secret dans le chemin.
 - `src/tools/` — registre + dispatch ; annotations calculées par nom.
 
-## État du portage (vs ../foundry-vtt-mcp)
+## État du portage : ✅ PARITÉ 100 % (2026-07-17)
 
-- ✅ Noyau : 36 outils (13 paires get_*, ping, get_world, get_current_scene,
-  search_journals, list_compendium_packs, get_pack_documents, create/modify/
-  delete_document, get_events) + resources (list curseurs a:/j:, read
-  actors|journal + data CC) + prompts (session-recap, world-overview) +
-  souscriptions + notifications logging/resources-updated.
-- ✅ Vérifié en réel (2026-07-17, monde v13.351) : auth MCP-Bot, monde 17,8 Mo,
-  6 960 journaux en 0,37 s, fraîcheur create→read→delete, packs, prompts.
-- ⬜ À porter : outils de séance (journaux aux joueurs, share_image, pause,
-  scènes/pull, settings, ownership, tokens, combat, playlists, draw_from_table,
-  import/export, cc_*, wait_for_message, adjust destiny…) ; modules systèmes
-  (starwarsffg avec dice+derived, dnd5e, daggerheart) ; create/delete_compendium,
-  upload/browse/create_directory (manageFiles), show_credentials/choose_instance.
-- ⬜ Déploiement : runtime Rust Clever (nouvelle app ou bascule de
-  foundry-mcp-gateway une fois la parité atteinte) — env identiques
-  (MCP_SECRET, FOUNDRY_CREDENTIALS_JSON, PORT).
+**78 outils** (identique au TS) : 66 génériques (13 paires get_* avec where/
+pushdown/index/max_length/offset/limit, écritures, packs+index, fichiers via
+manageFiles + upload HTTP multipart, compendiums via manageCompendium, séance
+complète — journaux aux joueurs, share_image, pause, scènes/pull, tokens,
+conditions, combat avec noms résolus, playlists, draw_from_table — settings,
+ownership, import/export Markdown, credentials/instances multi, get_events +
+wait_for_message) + Campaign Codex (4) + modules système : starwarsffg (7,
+dont dés narratifs et MOTEUR DE DÉRIVATION des fiches), dnd5e (2, moteur d20
+SRD), daggerheart (3, dés de Dualité). Prompts ×3, resources+subscribe,
+notifications SSE. 22 tests unitaires (moteurs de dés déterministes,
+dérivation, protocole, filtres, markdown, base64).
+
+**Batterie de parité : 45/45 en réel** (monde v13.351) — le tout validé
+contre le Foundry vivant, y compris upload PNG, blessure critique attachée
+(« Hamstrung »), dérivation Pahas'Tis (Will 3 + 3 boosts), cycle Destinée.
+
+⬜ Reste : déploiement (runtime Rust Clever — nouvelle app ou bascule de
+foundry-mcp-gateway ; env identiques MCP_SECRET/FOUNDRY_CREDENTIALS_JSON/PORT)
+puis DÉCOMMISSION du TS. Créer le dépôt GitHub wanoo/foundry-mcp-gateway.
 
 ## Test local
 

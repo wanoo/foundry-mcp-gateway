@@ -6,6 +6,7 @@
 //! préfixe de route), PORT (défaut 8080).
 
 mod foundry;
+mod systems;
 mod mcp;
 mod tools;
 

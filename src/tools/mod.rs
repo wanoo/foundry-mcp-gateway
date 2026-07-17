@@ -2,11 +2,17 @@
 //! couvre lectures/écritures/packs/recherche/événements ; les outils de séance
 //! et les modules système arrivent par lots.)
 
+pub mod cc;
+pub mod manage;
+pub mod markdown;
+pub mod session;
+
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Map, Value, json};
 
 use crate::foundry::documents::{can_use_index, filter_fields, get_path};
 use crate::mcp::McpState;
+use crate::systems;
 
 pub const COLLECTIONS: [(&str, &str, &str); 13] = [
     ("actors", "actor", "actor"),
@@ -29,12 +35,80 @@ fn plural_to_collection(plural: &str) -> &str {
     if plural == "journals" { "journal" } else { plural }
 }
 
-fn text_response(value: &Value) -> Value {
+pub fn text_response(value: &Value) -> Value {
     json!({ "content": [{ "type": "text", "text": value.to_string() }] })
 }
 
-fn error_response(message: String) -> Value {
+pub fn error_response(message: String) -> Value {
     json!({ "content": [{ "type": "text", "text": message }], "isError": true })
+}
+
+/// Poste un ChatMessage (author = le bot, whisper optionnel) — helper partagé.
+pub async fn post_chat(
+    state: &McpState,
+    content: &str,
+    flags: Value,
+    whisper: Option<&Value>,
+) -> Result<Value> {
+    let mut message = json!({
+        "content": content,
+        "author": state.foundry.user_id().await,
+        "flags": flags,
+    });
+    if let Some(w) = whisper.and_then(Value::as_array) {
+        if !w.is_empty() {
+            message["whisper"] = json!(w);
+        }
+    }
+    state.foundry.modify_document("ChatMessage", "create", json!({
+        "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+        "data": [message],
+    })).await
+}
+
+/// Tirages sur une RollTable (formule NdM±k + modificateur, sélection par plage).
+pub fn roll_table_draws(table: &Value, modifier: i64, rolls: usize) -> Result<Vec<Value>> {
+    let formula = table.get("formula").and_then(Value::as_str).unwrap_or("1d100")
+        .replace(char::is_whitespace, "");
+    let re = regex::Regex::new(r"^(?i)(\d+)d(\d+)([+-]\d+)?$").unwrap();
+    let caps = re.captures(&formula)
+        .ok_or_else(|| anyhow!("Unsupported table formula '{formula}' (expected NdM±k)"))?;
+    let n: i64 = caps[1].parse()?;
+    let m: i64 = caps[2].parse()?;
+    let k: i64 = caps.get(3).map(|c| c.as_str().parse().unwrap_or(0)).unwrap_or(0);
+    let empty = vec![];
+    let results = table.get("results").and_then(Value::as_array).unwrap_or(&empty);
+
+    let mut draws = Vec::new();
+    for _ in 0..rolls {
+        let mut roll = k + modifier;
+        for _ in 0..n {
+            roll += 1 + (rand::random::<f64>() * m as f64) as i64 % m;
+        }
+        let hit = results.iter().find(|r| {
+            r.get("range").and_then(Value::as_array)
+                .and_then(|rg| Some((rg.first()?.as_i64()?, rg.get(1)?.as_i64()?)))
+                .map(|(lo, hi)| roll >= lo && roll <= hi)
+                .unwrap_or(false)
+        });
+        draws.push(json!({
+            "roll": roll,
+            "range": hit.and_then(|h| h.get("range")).cloned(),
+            "text": hit.and_then(|h| h.get("description").or(h.get("text")).or(h.get("name")))
+                .and_then(Value::as_str),
+            "documentUuid": hit.and_then(|h| h.get("documentUuid")).cloned(),
+        }));
+    }
+    Ok(draws)
+}
+
+/// Troncature par taille JSON (compat `max_length` du serveur TS).
+fn truncate_by_bytes(mut docs: Vec<Value>, max_length: Option<usize>) -> Vec<Value> {
+    let Some(max) = max_length.filter(|m| *m > 0) else { return docs };
+    while !docs.is_empty() && Value::Array(docs.clone()).to_string().len() > max {
+        docs.pop();
+    }
+    docs
 }
 
 fn annotations(name: &str) -> Value {
@@ -65,6 +139,7 @@ pub fn definitions() -> Vec<Value> {
                 "requested_fields": { "type": "array", "items": { "type": "string" } },
                 "offset": { "type": "number" },
                 "limit": { "type": "number" },
+                "max_length": { "type": "number", "description": "Truncate the response to ~this many JSON bytes (drops trailing docs)" },
             }}),
         ));
         tools.push(tool(
@@ -116,6 +191,7 @@ pub fn definitions() -> Vec<Value> {
             "pack": { "type": "string" },
             "query": { "type": "object", "additionalProperties": true },
             "requested_fields": { "type": "array", "items": { "type": "string" } },
+            "max_length": { "type": "number" },
         }, "required": ["type", "pack"] }),
     ));
     tools.push(tool(
@@ -159,14 +235,23 @@ pub fn definitions() -> Vec<Value> {
             "limit": { "type": "number" },
         }}),
     ));
+    // Outils de séance, gestion, Campaign Codex, et modules système.
+    for (name, desc, schema) in session::definitions()
+        .into_iter()
+        .chain(manage::definitions())
+        .chain(cc::definitions())
+        .chain(systems::loaded_modules().iter().flat_map(|m| (m.definitions)()))
+    {
+        tools.push(tool(name, desc, schema));
+    }
     tools
 }
 
-fn str_arg(args: &Value, key: &str) -> Option<String> {
+pub fn str_arg(args: &Value, key: &str) -> Option<String> {
     args.get(key).and_then(Value::as_str).map(String::from)
 }
 
-fn fields_arg(args: &Value) -> Option<Vec<String>> {
+pub fn fields_arg(args: &Value) -> Option<Vec<String>> {
     args.get("requested_fields").and_then(Value::as_array).map(|a| {
         a.iter()
             .filter_map(Value::as_str)
@@ -175,12 +260,23 @@ fn fields_arg(args: &Value) -> Option<Vec<String>> {
     })
 }
 
-fn where_arg(args: &Value) -> Option<Map<String, Value>> {
+pub fn where_arg(args: &Value) -> Option<Map<String, Value>> {
     args.get("where").and_then(Value::as_object).cloned()
 }
 
 pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Value> {
-    match run_tool(state, name, args).await {
+    let result = if session::handles(name) {
+        session::run(state, name, args).await
+    } else if manage::handles(name) {
+        manage::run(state, name, args).await
+    } else if cc::handles(name) {
+        cc::run(state, name, args).await
+    } else if systems::loaded_modules().iter().any(|m| (m.handles)(name)) {
+        systems::run(state, name, args).await
+    } else {
+        run_tool(state, name, args).await
+    };
+    match result {
         Ok(v) => Ok(v),
         Err(e) => Ok(error_response(format!("Error: {e:#}"))),
     }
@@ -203,6 +299,10 @@ async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     args.get("limit").and_then(Value::as_u64).map(|l| l as usize),
                 )
                 .await?;
+            let docs = truncate_by_bytes(
+                docs,
+                args.get("max_length").and_then(Value::as_u64).map(|m| m as usize),
+            );
             return Ok(text_response(&Value::Array(docs)));
         }
         if name == format!("get_{singular}") {
@@ -334,6 +434,10 @@ async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 docs = foundry.get_collection(&doc_type, query, false, Some(&pack)).await?;
             }
             let out: Vec<Value> = docs.iter().map(|d| filter_fields(d, fields.as_deref())).collect();
+            let out = truncate_by_bytes(
+                out,
+                args.get("max_length").and_then(Value::as_u64).map(|m| m as usize),
+            );
             Ok(text_response(&Value::Array(out)))
         }
         "create_document" | "modify_document" | "delete_document" => {
@@ -477,6 +581,9 @@ pub fn prompt_definitions() -> Vec<Value> {
         json!({ "name": "world-overview",
             "description": "Brief de l'état du monde : scène active, combats, joueurs connectés.",
             "arguments": [] }),
+        json!({ "name": "prep-checklist",
+            "description": "Vérifier la préparation d'une scène : tokens, playlists — et lister ce qui manque.",
+            "arguments": [{ "name": "scene", "required": false }] }),
     ]
 }
 
@@ -523,6 +630,35 @@ pub async fn prompts_get(state: &McpState, name: &str, args: &Value) -> Result<V
                     scene,
                     combats.len(),
                     status.as_ref().and_then(|s| s.get("users")).and_then(Value::as_u64).unwrap_or(0),
+                )}}]
+            }))
+        }
+        "prep-checklist" => {
+            let scene = match args.get("scene").and_then(Value::as_str) {
+                Some(s) => state.foundry.find_document("scenes", s,
+                    Some(&["_id".into(), "name".into(), "tokens".into()])).await?,
+                None => {
+                    let w = json!({"active": true}).as_object().cloned().unwrap();
+                    state.foundry.get_documents("scenes", Some(&w),
+                        Some(&["_id".into(), "name".into(), "tokens".into()]), 0, Some(1))
+                        .await?.into_iter().next()
+                }
+            };
+            let scene_name = scene.as_ref().and_then(|s| s.get("name")).and_then(Value::as_str).unwrap_or("?").to_string();
+            let empty = vec![];
+            let tokens: Vec<&str> = scene.as_ref()
+                .and_then(|s| s.get("tokens")).and_then(Value::as_array).unwrap_or(&empty)
+                .iter().filter_map(|t| t.get("name").and_then(Value::as_str)).collect();
+            let fields = vec!["_id".into(), "name".into()];
+            let playlists = state.foundry.get_documents("playlists", None, Some(&fields), 0, None).await?;
+            let pl_names: Vec<&str> = playlists.iter().filter_map(|p| p.get("name").and_then(Value::as_str)).collect();
+            Ok(json!({
+                "description": format!("Checklist de préparation — {scene_name}"),
+                "messages": [{ "role": "user", "content": { "type": "text", "text": format!(
+                    "Préparation de la scène « {scene_name} » :\n- Tokens posés ({}) : {}\n- Playlists disponibles : {}\n\nAnalyse cette préparation : qu'est-ce qui manque probablement (adversaires, ambiance, handouts, éclairage) pour jouer cette scène confortablement ?",
+                    tokens.len(),
+                    if tokens.is_empty() { "aucun".to_string() } else { tokens.join(", ") },
+                    if pl_names.is_empty() { "aucune".to_string() } else { pl_names.join(", ") },
                 )}}]
             }))
         }
