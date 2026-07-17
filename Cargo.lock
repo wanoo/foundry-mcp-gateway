@@ -222,7 +222,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "foundry-mcp-rs"
+name = "foundry-mcp-gateway"
 version = "0.1.0"
 dependencies = [
  "anyhow",

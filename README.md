@@ -1,4 +1,4 @@
-# foundry-mcp-rs
+# foundry-mcp-gateway
 
 Serveur **MCP** (Model Context Protocol) **indépendant** pour **Foundry VTT**,
 écrit en Rust. Un seul binaire : client Foundry **natif** (il se connecte en

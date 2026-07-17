@@ -1,4 +1,8 @@
-# foundry-mcp-rs — contexte projet (Claude Code)
+# foundry-mcp-gateway (Rust) — contexte projet (Claude Code)
+
+**Nom officiel : `foundry-mcp-gateway`** (libre sur GitHub et crates.io, aligné
+sur l'alias de l'app Clever). Dossier local encore `foundry-mcp-rs` tant que
+l'ancien dossier Node homonyme n'a pas été jeté.
 
 **Réécriture Rust INDÉPENDANTE** du serveur MCP Foundry (plus un fork — dépôt
 souverain). Un binaire unique = client Foundry natif + transport MCP HTTP
