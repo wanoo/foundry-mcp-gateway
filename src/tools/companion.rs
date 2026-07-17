@@ -65,18 +65,6 @@ pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
             "file":{"type":"string"},"token":{"type":"string"},
             "x":{"type":"number"},"y":{"type":"number"},"scale":{"type":"number"}},
             "required":["file"]})),
-        ("client_cc_convert",
-         "Campaign Codex: convert a Journal Entry (uuid) into a CC sheet of the given type (location/npc/region/shop/group/tags). Client-side API — great for bulk-migrating journals to CC.",
-         json!({"type":"object","properties":{
-            "uuid":{"type":"string"},"type":{"type":"string"},
-            "pages_to_separate_sheets":{"type":"boolean"}},
-            "required":["uuid","type"]})),
-        ("client_cc_export_obsidian",
-         "Campaign Codex: export the whole codex to a Markdown/Obsidian zip (client-side API).",
-         json!({"type":"object","properties":{}})),
-        ("client_cc_open_toc",
-         "Campaign Codex: open the Table of Contents on the GM client (optional tab: locations/npcs/regions/shops/groups/tags/quests).",
-         json!({"type":"object","properties":{"tab":{"type":"string"}}})),
         ("client_get_state",
          "Client telemetry: active users, each one's viewed scene and assigned character, and the GM's current scene. (Live selections/targets stream via get_events as selection/target events.)",
          json!({"type":"object","properties":{}})),
@@ -88,7 +76,7 @@ pub fn handles(name: &str) -> bool {
 }
 
 /// Émet une commande sur le canal du module et attend la réponse (reply == id).
-async fn call_companion(
+pub async fn call_companion(
     state: &McpState,
     cmd: &str,
     args: Value,
@@ -236,32 +224,6 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 }
             }
             call_companion(state, "play_effect", a, None, 20).await?
-        }
-        "client_cc_convert" => {
-            let uuid = str_arg(args, "uuid").ok_or_else(|| anyhow!("'uuid' is required"))?;
-            let cc_type = str_arg(args, "type").ok_or_else(|| anyhow!("'type' is required"))?;
-            let pages = args
-                .get("pages_to_separate_sheets")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            call_companion(
-                state,
-                "cc_convert",
-                json!({ "uuid": uuid, "type": cc_type, "pagesToSeparateSheets": pages }),
-                None,
-                30,
-            )
-            .await?
-        }
-        "client_cc_export_obsidian" => {
-            call_companion(state, "cc_export_obsidian", json!({}), None, 60).await?
-        }
-        "client_cc_open_toc" => {
-            let mut a = json!({});
-            if let Some(t) = str_arg(args, "tab") {
-                a["tab"] = json!(t);
-            }
-            call_companion(state, "cc_open_toc", a, None, 10).await?
         }
         "client_get_state" => {
             call_companion(state, "get_client_state", json!({}), None, 10).await?
