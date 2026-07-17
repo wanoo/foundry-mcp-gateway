@@ -2,14 +2,21 @@
 //! Chemins vérifiés sur le système Foundryborne/daggerheart :
 //! system.traits.<trait>.value · system.resources.{hitPoints,stress,hope}.{value,max}.
 
-use anyhow::{Result, anyhow, bail};
-use serde_json::{Value, json};
+use anyhow::{anyhow, bail, Result};
+use serde_json::{json, Value};
 
 use crate::foundry::documents::get_path;
 use crate::mcp::McpState;
 use crate::tools::{post_chat, str_arg, text_response};
 
-pub const TRAITS: [&str; 6] = ["agility", "strength", "finesse", "instinct", "presence", "knowledge"];
+pub const TRAITS: [&str; 6] = [
+    "agility",
+    "strength",
+    "finesse",
+    "instinct",
+    "presence",
+    "knowledge",
+];
 const STAT_PATHS: [(&str, &str); 3] = [
     ("hit_points", "system.resources.hitPoints.value"),
     ("stress", "system.resources.stress.value"),
@@ -27,7 +34,11 @@ pub struct DualityResult {
 }
 
 pub fn roll_duality<R: FnMut() -> f64>(
-    modifier: i64, difficulty: Option<i64>, advantage: bool, disadvantage: bool, mut rng: R,
+    modifier: i64,
+    difficulty: Option<i64>,
+    advantage: bool,
+    disadvantage: bool,
+    mut rng: R,
 ) -> DualityResult {
     let d12 = |rng: &mut R| 1 + (rng() * 12.0) as i64 % 12;
     let d6 = |rng: &mut R| 1 + (rng() * 6.0) as i64 % 6;
@@ -35,11 +46,21 @@ pub fn roll_duality<R: FnMut() -> f64>(
     let fear = d12(&mut rng);
     let adv = advantage && !disadvantage;
     let dis = disadvantage && !advantage;
-    let advantage_die = if adv { Some(d6(&mut rng)) } else if dis { Some(-d6(&mut rng)) } else { None };
+    let advantage_die = if adv {
+        Some(d6(&mut rng))
+    } else if dis {
+        Some(-d6(&mut rng))
+    } else {
+        None
+    };
     let total = hope + fear + modifier + advantage_die.unwrap_or(0);
     let is_critical = hope == fear;
     DualityResult {
-        hope, fear, advantage_die, total, is_critical,
+        hope,
+        fear,
+        advantage_die,
+        total,
+        is_critical,
         with_hope: hope > fear,
         success: difficulty.map(|d| is_critical || total >= d),
     }
@@ -48,7 +69,11 @@ pub fn roll_duality<R: FnMut() -> f64>(
 pub fn format_duality(r: &DualityResult) -> String {
     let mut parts = vec![format!("Espoir {} + Peur {}", r.hope, r.fear)];
     if let Some(d) = r.advantage_die {
-        parts.push(if d >= 0 { format!("+ d6 avantage {d}") } else { format!("− d6 désavantage {}", -d) });
+        parts.push(if d >= 0 {
+            format!("+ d6 avantage {d}")
+        } else {
+            format!("− d6 désavantage {}", -d)
+        });
     }
     let outcome = if r.is_critical {
         "⭐ RÉUSSITE CRITIQUE (gagne 1 Espoir, efface 1 Stress)".to_string()
@@ -112,23 +137,37 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let (modifier, title, actor_ref) = if name == "dh_roll_duality" {
                 let description = str_arg(args, "description")
                     .ok_or_else(|| anyhow!("'description' is required"))?;
-                (args.get("modifier").and_then(Value::as_i64).unwrap_or(0), description, None)
+                (
+                    args.get("modifier").and_then(Value::as_i64).unwrap_or(0),
+                    description,
+                    None,
+                )
             } else {
-                let actor_arg = str_arg(args, "actor").ok_or_else(|| anyhow!("'actor' is required"))?;
-                let trait_name = str_arg(args, "trait").map(|t| t.to_lowercase())
+                let actor_arg =
+                    str_arg(args, "actor").ok_or_else(|| anyhow!("'actor' is required"))?;
+                let trait_name = str_arg(args, "trait")
+                    .map(|t| t.to_lowercase())
                     .ok_or_else(|| anyhow!("'trait' is required"))?;
                 if !TRAITS.contains(&trait_name.as_str()) {
                     bail!("Unknown trait '{trait_name}'. Valid: {}", TRAITS.join(", "));
                 }
-                let actor = foundry.find_document("actors", &actor_arg, None).await?
+                let actor = foundry
+                    .find_document("actors", &actor_arg, None)
+                    .await?
                     .ok_or_else(|| anyhow!("Actor not found: {actor_arg}"))?;
                 let trait_value = get_path(&actor, &format!("system.traits.{trait_name}.value"))
-                    .and_then(Value::as_i64).unwrap_or(0);
-                let modifier = trait_value + args.get("extra_modifier").and_then(Value::as_i64).unwrap_or(0);
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                let modifier = trait_value
+                    + args
+                        .get("extra_modifier")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0);
                 let title = format!(
                     "{} — {}{} ({trait_value:+})",
                     actor["name"].as_str().unwrap_or("?"),
-                    trait_name[..1].to_uppercase(), &trait_name[1..]
+                    trait_name[..1].to_uppercase(),
+                    &trait_name[1..]
                 );
                 (modifier, title, Some(actor))
             };
@@ -136,9 +175,14 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let roll = {
                 let mut rng = rand::rng();
                 roll_duality(
-                    modifier, difficulty,
-                    args.get("advantage").and_then(Value::as_bool).unwrap_or(false),
-                    args.get("disadvantage").and_then(Value::as_bool).unwrap_or(false),
+                    modifier,
+                    difficulty,
+                    args.get("advantage")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    args.get("disadvantage")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
                     || rand::Rng::random::<f64>(&mut rng),
                 )
             };
@@ -147,11 +191,17 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if args.get("post").and_then(Value::as_bool).unwrap_or(true) {
                 let content = format!(
                     "<h3>🎲 {title}{}</h3><p><strong>{summary}</strong></p>",
-                    difficulty.map(|d| format!(" (Difficulté {d})")).unwrap_or_default()
+                    difficulty
+                        .map(|d| format!(" (Difficulté {d})"))
+                        .unwrap_or_default()
                 );
-                post_chat(state, &content,
+                post_chat(
+                    state,
+                    &content,
                     json!({"foundry-mcp": {"duality": result_json(&roll)}}),
-                    args.get("whisper_users")).await?;
+                    args.get("whisper_users"),
+                )
+                .await?;
                 posted = true;
             }
             let mut out = result_json(&roll);
@@ -165,12 +215,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         }
         "dh_adjust_stats" => {
             let actor_arg = str_arg(args, "actor").ok_or_else(|| anyhow!("'actor' is required"))?;
-            let requested: Vec<&(&str, &str)> = STAT_PATHS.iter()
-                .filter(|(k, _)| args.get(*k).is_some()).collect();
+            let requested: Vec<&(&str, &str)> = STAT_PATHS
+                .iter()
+                .filter(|(k, _)| args.get(*k).is_some())
+                .collect();
             if requested.is_empty() {
                 bail!("provide at least one of: hit_points, stress, hope");
             }
-            let actor = foundry.find_document("actors", &actor_arg, None).await?
+            let actor = foundry
+                .find_document("actors", &actor_arg, None)
+                .await?
                 .ok_or_else(|| anyhow!("Actor not found: {actor_arg}"))?;
             let absolute = args.get("set").and_then(Value::as_bool).unwrap_or(false);
             let mut update = serde_json::Map::new();
@@ -180,16 +234,24 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 let max = get_path(&actor, &path.replace(".value", ".max")).and_then(Value::as_i64);
                 let input = args.get(*key).and_then(Value::as_i64).unwrap_or(0);
                 let mut after = (if absolute { input } else { before + input }).max(0);
-                if let Some(m) = max.filter(|m| *m > 0) { after = after.min(m); }
+                if let Some(m) = max.filter(|m| *m > 0) {
+                    after = after.min(m);
+                }
                 update.insert((*path).into(), json!(after));
                 changes.insert((*key).into(), json!({"before": before, "after": after}));
             }
             let mut update_doc = Value::Object(update);
             update_doc["_id"] = actor["_id"].clone();
-            let result = foundry.modify_document("Actor", "update", json!({
-                "action": "update", "diff": false, "recursive": true, "render": true,
-                "updates": [update_doc],
-            })).await?;
+            let result = foundry
+                .modify_document(
+                    "Actor",
+                    "update",
+                    json!({
+                        "action": "update", "diff": false, "recursive": true, "render": true,
+                        "updates": [update_doc],
+                    }),
+                )
+                .await?;
             Ok(text_response(&json!({
                 "actor": {"_id": actor["_id"], "name": actor["name"]},
                 "mode": if absolute { "set" } else { "delta" },
@@ -206,9 +268,15 @@ mod tests {
 
     fn seq(vals: Vec<f64>) -> impl FnMut() -> f64 {
         let mut i = 0;
-        move || { let v = vals[i % vals.len()]; i += 1; v }
+        move || {
+            let v = vals[i % vals.len()];
+            i += 1;
+            v
+        }
     }
-    fn d12(n: i64) -> f64 { (n - 1) as f64 / 12.0 }
+    fn d12(n: i64) -> f64 {
+        (n - 1) as f64 / 12.0
+    }
 
     #[test]
     fn espoir_peur_critique() {

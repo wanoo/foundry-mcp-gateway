@@ -2,7 +2,7 @@
 //! (acteur, items, talents APPRIS des spécialisations, upgrades appris des
 //! pouvoirs de la Force). Résout le piège « le doc source affiche 0 ».
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone)]
 pub struct AttributeMod {
@@ -13,16 +13,29 @@ pub struct AttributeMod {
 }
 
 fn read_attributes(attrs: Option<&Value>, source: &str, out: &mut Vec<AttributeMod>) {
-    let Some(map) = attrs.and_then(Value::as_object) else { return };
+    let Some(map) = attrs.and_then(Value::as_object) else {
+        return;
+    };
     for entry in map.values() {
         let (Some(target), Some(modtype)) = (
             entry.get("mod").and_then(Value::as_str),
             entry.get("modtype").and_then(Value::as_str),
-        ) else { continue };
-        let value = entry.get("value").and_then(Value::as_i64)
-            .or_else(|| entry.get("value").and_then(Value::as_bool).map(|b| b as i64))
+        ) else {
+            continue;
+        };
+        let value = entry
+            .get("value")
+            .and_then(Value::as_i64)
+            .or_else(|| {
+                entry
+                    .get("value")
+                    .and_then(Value::as_bool)
+                    .map(|b| b as i64)
+            })
             .unwrap_or(0);
-        if value == 0 { continue; }
+        if value == 0 {
+            continue;
+        }
         out.push(AttributeMod {
             target: target.to_string(),
             modtype: modtype.to_string(),
@@ -36,16 +49,26 @@ pub fn collect_attribute_mods(actor: &Value) -> Vec<AttributeMod> {
     let mut mods = Vec::new();
     read_attributes(actor.pointer("/system/attributes"), "acteur", &mut mods);
     let empty = vec![];
-    for item in actor.get("items").and_then(Value::as_array).unwrap_or(&empty) {
-        let name = item.get("name").and_then(Value::as_str)
-            .or_else(|| item.get("type").and_then(Value::as_str)).unwrap_or("item");
+    for item in actor
+        .get("items")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty)
+    {
+        let name = item
+            .get("name")
+            .and_then(Value::as_str)
+            .or_else(|| item.get("type").and_then(Value::as_str))
+            .unwrap_or("item");
         read_attributes(item.pointer("/system/attributes"), name, &mut mods);
         match item.get("type").and_then(Value::as_str) {
             Some("specialization") => {
                 if let Some(talents) = item.pointer("/system/talents").and_then(Value::as_object) {
                     for t in talents.values() {
                         if t.get("islearned").and_then(Value::as_bool).unwrap_or(false) {
-                            let tname = format!("talent {}", t.get("name").and_then(Value::as_str).unwrap_or("?"));
+                            let tname = format!(
+                                "talent {}",
+                                t.get("name").and_then(Value::as_str).unwrap_or("?")
+                            );
                             read_attributes(t.get("attributes"), &tname, &mut mods);
                         }
                     }
@@ -57,7 +80,10 @@ pub fn collect_attribute_mods(actor: &Value) -> Vec<AttributeMod> {
                         if key.starts_with("upgrade")
                             && u.get("islearned").and_then(Value::as_bool).unwrap_or(false)
                         {
-                            let uname = format!("pouvoir {}", u.get("name").and_then(Value::as_str).unwrap_or(key));
+                            let uname = format!(
+                                "pouvoir {}",
+                                u.get("name").and_then(Value::as_str).unwrap_or(key)
+                            );
                             read_attributes(u.get("attributes"), &uname, &mut mods);
                         }
                     }
@@ -70,7 +96,10 @@ pub fn collect_attribute_mods(actor: &Value) -> Vec<AttributeMod> {
 }
 
 fn sum_mods(mods: &[AttributeMod], modtype: &str, target: &str) -> i64 {
-    mods.iter().filter(|m| m.modtype == modtype && m.target == target).map(|m| m.value).sum()
+    mods.iter()
+        .filter(|m| m.modtype == modtype && m.target == target)
+        .map(|m| m.value)
+        .sum()
 }
 
 pub fn derive_characteristic(actor: &Value, name: &str, mods: &[AttributeMod]) -> i64 {
@@ -85,21 +114,33 @@ pub fn derive_characteristic(actor: &Value, name: &str, mods: &[AttributeMod]) -
 /// + boosts / setbacks / remove-setbacks des talents.
 pub fn derive_skill_pool(actor: &Value, skill_name: &str) -> Option<Value> {
     let skills = actor.pointer("/system/skills")?.as_object()?;
-    let key = skills.keys().find(|k| k.to_lowercase() == skill_name.to_lowercase())?.clone();
+    let key = skills
+        .keys()
+        .find(|k| k.to_lowercase() == skill_name.to_lowercase())?
+        .clone();
     let skill = &skills[&key];
-    let characteristic = skill.get("characteristic").and_then(Value::as_str).unwrap_or("Brawn").to_string();
+    let characteristic = skill
+        .get("characteristic")
+        .and_then(Value::as_str)
+        .unwrap_or("Brawn")
+        .to_string();
 
     let mods = collect_attribute_mods(actor);
     let char_value = derive_characteristic(actor, &characteristic, &mods).max(0);
     let rank = (skill.get("rank").and_then(Value::as_i64).unwrap_or(0)
-        + sum_mods(&mods, "Skill Rank", &key)).max(0);
+        + sum_mods(&mods, "Skill Rank", &key))
+    .max(0);
     let proficiency = char_value.min(rank);
     let ability = char_value.max(rank) - proficiency;
-    let sources: Vec<String> = mods.iter()
-        .filter(|m| m.target == key || (m.modtype == "Characteristic" && m.target == characteristic))
+    let sources: Vec<String> = mods
+        .iter()
+        .filter(|m| {
+            m.target == key || (m.modtype == "Characteristic" && m.target == characteristic)
+        })
         .map(|m| format!("{} ({} {:+})", m.source, m.modtype, m.value))
         .collect::<std::collections::BTreeSet<_>>()
-        .into_iter().collect();
+        .into_iter()
+        .collect();
 
     Some(json!({
         "skill": key,

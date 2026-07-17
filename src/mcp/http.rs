@@ -6,7 +6,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -16,7 +16,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use super::{McpState, Session, handle_message};
+use super::{handle_message, McpState, Session};
 
 const SESSION_HEADER: &str = "mcp-session-id";
 
@@ -63,7 +63,10 @@ async fn post_handler(
 
     match handle_message(&state, &message).await {
         Some(reply) => (
-            [(SESSION_HEADER, sid.as_str()), (header::CONTENT_TYPE.as_str(), "application/json")],
+            [
+                (SESSION_HEADER, sid.as_str()),
+                (header::CONTENT_TYPE.as_str(), "application/json"),
+            ],
             Json(reply),
         )
             .into_response(),
@@ -85,11 +88,13 @@ async fn sse_handler(
         .and_then(|v| v.to_str().ok())
         .map(String::from)
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "mcp-session-id manquant").into_response())?;
-    let rx = PENDING_RX
-        .lock()
-        .await
-        .remove(&sid)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "session inconnue ou flux déjà ouvert").into_response())?;
+    let rx = PENDING_RX.lock().await.remove(&sid).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            "session inconnue ou flux déjà ouvert",
+        )
+            .into_response()
+    })?;
 
     let stream = futures_util::stream::unfold(rx, |mut rx| async move {
         let value = rx.recv().await?;

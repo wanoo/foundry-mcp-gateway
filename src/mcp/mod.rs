@@ -6,14 +6,14 @@ pub mod http;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use serde_json::{Value, json};
-use tokio::sync::{Mutex, mpsc};
+use serde_json::{json, Value};
+use tokio::sync::{mpsc, Mutex};
 
 use crate::foundry::client::FoundryHandle;
 use crate::tools;
 
 pub const PROTOCOL_VERSION: &str = "2025-03-26";
-pub const SERVER_NAME: &str = "foundry-mcp-rs";
+pub const SERVER_NAME: &str = "foundry-mcp-gateway";
 pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct Session {
@@ -61,9 +61,7 @@ pub async fn handle_message(state: &McpState, message: &Value) -> Option<Value> 
     let params = message.get("params").cloned().unwrap_or(Value::Null);
 
     // Notifications entrantes : rien à répondre.
-    let Some(id) = id else {
-        return None;
-    };
+    let id = id?;
 
     let result = match method {
         "initialize" => Ok(json!({
@@ -79,7 +77,10 @@ pub async fn handle_message(state: &McpState, message: &Value) -> Option<Value> 
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": tools::definitions() })),
         "tools/call" => {
-            let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
+            let name = params
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
             match tools::dispatch(state, name, &args).await {
                 Ok(v) => Ok(v),
@@ -88,11 +89,18 @@ pub async fn handle_message(state: &McpState, message: &Value) -> Option<Value> 
         }
         "resources/list" => {
             let cursor = params.get("cursor").and_then(Value::as_str);
-            tools::resources_list(state, cursor).await.map_err(|e| format!("{e:#}"))
+            tools::resources_list(state, cursor)
+                .await
+                .map_err(|e| format!("{e:#}"))
         }
         "resources/read" => {
-            let uri = params.get("uri").and_then(Value::as_str).unwrap_or_default();
-            tools::resources_read(state, uri).await.map_err(|e| format!("{e:#}"))
+            let uri = params
+                .get("uri")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            tools::resources_read(state, uri)
+                .await
+                .map_err(|e| format!("{e:#}"))
         }
         "resources/subscribe" => {
             if let Some(uri) = params.get("uri").and_then(Value::as_str) {
@@ -108,9 +116,14 @@ pub async fn handle_message(state: &McpState, message: &Value) -> Option<Value> 
         }
         "prompts/list" => Ok(json!({ "prompts": tools::prompt_definitions() })),
         "prompts/get" => {
-            let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
+            let name = params
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
-            tools::prompts_get(state, name, &args).await.map_err(|e| format!("{e:#}"))
+            tools::prompts_get(state, name, &args)
+                .await
+                .map_err(|e| format!("{e:#}"))
         }
         _ => Err(format!("méthode inconnue : {method}")),
     };
@@ -134,11 +147,11 @@ pub fn spawn_event_bridge(state: McpState) {
             };
             let first = event.args.first();
             let mut data = json!({ "seq": event.seq, "event": event.event });
-            if event.event == "modifyDocument" {
-                if let Some(f) = first {
-                    data["type"] = f.get("type").cloned().unwrap_or(Value::Null);
-                    data["action"] = f.get("action").cloned().unwrap_or(Value::Null);
-                }
+            if event.event == "modifyDocument"
+                && let Some(f) = first
+            {
+                data["type"] = f.get("type").cloned().unwrap_or(Value::Null);
+                data["action"] = f.get("action").cloned().unwrap_or(Value::Null);
             }
             state
                 .notify_all(json!({
@@ -149,40 +162,40 @@ pub fn spawn_event_bridge(state: McpState) {
                 .await;
 
             // resources/updated pour les documents souscrits
-            if event.event == "modifyDocument" {
-                if let Some(f) = first {
-                    let section = match f.get("type").and_then(Value::as_str) {
-                        Some("JournalEntry") => Some("journal"),
-                        Some("Actor") => Some("actors"),
-                        _ => None,
-                    };
-                    if let Some(section) = section {
-                        let subs = state.subscriptions.lock().await.clone();
-                        if !subs.is_empty() {
-                            let ids = f
-                                .get("result")
-                                .and_then(Value::as_array)
-                                .map(|docs| {
-                                    docs.iter()
-                                        .filter_map(|d| {
-                                            d.as_str().map(String::from).or_else(|| {
-                                                d.get("_id").and_then(Value::as_str).map(String::from)
-                                            })
+            if event.event == "modifyDocument"
+                && let Some(f) = first
+            {
+                let section = match f.get("type").and_then(Value::as_str) {
+                    Some("JournalEntry") => Some("journal"),
+                    Some("Actor") => Some("actors"),
+                    _ => None,
+                };
+                if let Some(section) = section {
+                    let subs = state.subscriptions.lock().await.clone();
+                    if !subs.is_empty() {
+                        let ids = f
+                            .get("result")
+                            .and_then(Value::as_array)
+                            .map(|docs| {
+                                docs.iter()
+                                    .filter_map(|d| {
+                                        d.as_str().map(String::from).or_else(|| {
+                                            d.get("_id").and_then(Value::as_str).map(String::from)
                                         })
-                                        .collect::<Vec<_>>()
-                                })
-                                .unwrap_or_default();
-                            for id in ids {
-                                let uri = format!("foundry://{section}/{id}");
-                                if subs.contains(&uri) {
-                                    state
-                                        .notify_all(json!({
-                                            "jsonrpc": "2.0",
-                                            "method": "notifications/resources/updated",
-                                            "params": { "uri": uri }
-                                        }))
-                                        .await;
-                                }
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
+                            .unwrap_or_default();
+                        for id in ids {
+                            let uri = format!("foundry://{section}/{id}");
+                            if subs.contains(&uri) {
+                                state
+                                    .notify_all(json!({
+                                        "jsonrpc": "2.0",
+                                        "method": "notifications/resources/updated",
+                                        "params": { "uri": uri }
+                                    }))
+                                    .await;
                             }
                         }
                     }

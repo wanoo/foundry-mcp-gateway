@@ -48,7 +48,11 @@ pub fn html_to_markdown(html: &str) -> String {
                 .captures_iter(&c[1])
                 .map(|m| m[1].trim().to_string())
                 .collect();
-            if cells.is_empty() { String::new() } else { format!("\n| {} |", cells.join(" | ")) }
+            if cells.is_empty() {
+                String::new()
+            } else {
+                format!("\n| {} |", cells.join(" | "))
+            }
         })
         .into_owned();
     md = BR.replace_all(&md, "\n").into_owned();
@@ -87,7 +91,9 @@ mod tests {
     #[test]
     fn uuid_aplati_et_tableaux() {
         assert_eq!(
-            html_to_markdown(r#"<p>@UUID[Compendium.world.crits.abc]{Stress mécanique} · Facile</p>"#),
+            html_to_markdown(
+                r#"<p>@UUID[Compendium.world.crits.abc]{Stress mécanique} · Facile</p>"#
+            ),
             "**Stress mécanique** · Facile"
         );
         let md = html_to_markdown("<table><tr><th>d100</th><th>Effet</th></tr><tr><td>1-9</td><td>Stress</td></tr></table>");
@@ -97,7 +103,10 @@ mod tests {
 
     #[test]
     fn entites_et_nettoyage() {
-        assert_eq!(html_to_markdown("<span>a&nbsp;&amp;&nbsp;b</span>"), "a & b");
+        assert_eq!(
+            html_to_markdown("<span>a&nbsp;&amp;&nbsp;b</span>"),
+            "a & b"
+        );
         assert_eq!(html_to_markdown("<section><p>texte</p></section>"), "texte");
     }
 }

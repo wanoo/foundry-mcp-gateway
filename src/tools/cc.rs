@@ -1,8 +1,8 @@
 //! Campaign Codex : fiches = JournalEntry + flags["campaign-codex"]
 //! {type, image?, data} — schéma relevé sur un monde réel (v13).
 
-use anyhow::{Result, anyhow, bail};
-use serde_json::{Value, json};
+use anyhow::{anyhow, bail, Result};
+use serde_json::{json, Value};
 
 use super::{str_arg, text_response};
 use crate::foundry::documents::get_path;
@@ -12,13 +12,19 @@ pub const CC_TYPES: [&str; 7] = ["npc", "group", "location", "region", "shop", "
 
 fn data_defaults(cc_type: &str) -> Value {
     match cc_type {
-        "npc" => json!({"linkedActor": null, "description": "", "linkedLocations": [], "linkedShops": [], "associates": [], "notes": "", "tagMode": false}),
+        "npc" => {
+            json!({"linkedActor": null, "description": "", "linkedLocations": [], "linkedShops": [], "associates": [], "notes": "", "tagMode": false})
+        }
         "group" => json!({"description": "", "associates": []}),
         "location" => json!({"description": "", "tags": [], "widgets": {}}),
         "region" => json!({"description": "", "tags": []}),
-        "shop" => json!({"description": "", "linkedNPCs": [], "linkedLocation": null, "inventory": [], "linkedScene": null, "markup": 1, "notes": "", "inventoryCacheVersion": 1}),
+        "shop" => {
+            json!({"description": "", "linkedNPCs": [], "linkedLocation": null, "inventory": [], "linkedScene": null, "markup": 1, "notes": "", "inventoryCacheVersion": 1})
+        }
         "quest" => json!({"description": "", "associates": [], "notes": ""}),
-        "tag" => json!({"linkedActor": null, "description": "", "linkedLocations": [], "linkedShops": [], "associates": [], "notes": "", "tagMode": true}),
+        "tag" => {
+            json!({"linkedActor": null, "description": "", "linkedLocations": [], "linkedShops": [], "associates": [], "notes": "", "tagMode": true})
+        }
         _ => json!({}),
     }
 }
@@ -76,9 +82,14 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 where_.insert("name__contains".into(), json!(n));
             }
             if let Some(tag) = str_arg(args, "tag") {
-                where_.insert("flags.campaign-codex.data.tags__contains".into(), json!(tag));
+                where_.insert(
+                    "flags.campaign-codex.data.tags__contains".into(),
+                    json!(tag),
+                );
             }
-            let sheets = foundry.get_documents("journal", Some(&where_), None, 0, None).await?;
+            let sheets = foundry
+                .get_documents("journal", Some(&where_), None, 0, None)
+                .await?;
             let index: Vec<Value> = sheets.iter().map(|s| {
                 let cc = cc_of(s);
                 let data = cc.get("data").cloned().unwrap_or(json!({}));
@@ -93,9 +104,11 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             Ok(text_response(&Value::Array(index)))
         }
         "cc_get_sheet" => {
-            let ident = str_arg(args, "_id").or_else(|| str_arg(args, "name"))
+            let ident = str_arg(args, "_id")
+                .or_else(|| str_arg(args, "name"))
                 .ok_or_else(|| anyhow!("Must provide one of: _id or name"))?;
-            let sheet = get_sheet(state, &ident).await?
+            let sheet = get_sheet(state, &ident)
+                .await?
                 .ok_or_else(|| anyhow!("No Campaign Codex sheet found with that identifier"))?;
             let cc = cc_of(&sheet);
             Ok(text_response(&json!({
@@ -109,7 +122,10 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let sheet_name = str_arg(args, "name").ok_or_else(|| anyhow!("'name' is required"))?;
             let cc_type = str_arg(args, "type").ok_or_else(|| anyhow!("'type' is required"))?;
             if !CC_TYPES.contains(&cc_type.as_str()) {
-                bail!("Unknown Campaign Codex type '{cc_type}'. Valid: {}", CC_TYPES.join(", "));
+                bail!(
+                    "Unknown Campaign Codex type '{cc_type}'. Valid: {}",
+                    CC_TYPES.join(", ")
+                );
             }
             let description = str_arg(args, "description").unwrap_or_default();
             let mut data = data_defaults(&cc_type);
@@ -117,17 +133,25 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let (Some(tags), Some(_)) = (args.get("tags"), data.get("tags")) {
                 data["tags"] = tags.clone();
             }
-            if let Some(actor_arg) = str_arg(args, "linked_actor") {
-                if data.get("linkedActor").is_some() {
-                    let fields = vec!["_id".into(), "name".into()];
-                    let actor = foundry.find_document("actors", &actor_arg, Some(&fields)).await?
-                        .ok_or_else(|| anyhow!("linked_actor not found: {actor_arg}"))?;
-                    data["linkedActor"] = json!(format!("Actor.{}", actor["_id"].as_str().unwrap_or("")));
-                }
+            if let Some(actor_arg) = str_arg(args, "linked_actor")
+                && data.get("linkedActor").is_some()
+            {
+                let fields = vec!["_id".into(), "name".into()];
+                let actor = foundry
+                    .find_document("actors", &actor_arg, Some(&fields))
+                    .await?
+                    .ok_or_else(|| anyhow!("linked_actor not found: {actor_arg}"))?;
+                data["linkedActor"] =
+                    json!(format!("Actor.{}", actor["_id"].as_str().unwrap_or("")));
             }
             let mut flags_cc = json!({"type": cc_type, "data": data});
-            if let Some(img) = str_arg(args, "image") { flags_cc["image"] = json!(img); }
-            let gm_only = args.get("gm_only").and_then(Value::as_bool).unwrap_or(false);
+            if let Some(img) = str_arg(args, "image") {
+                flags_cc["image"] = json!(img);
+            }
+            let gm_only = args
+                .get("gm_only")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             let doc = json!({
                 "name": sheet_name,
                 "flags": {"campaign-codex": flags_cc},
@@ -138,7 +162,10 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
                 "data": [doc],
             })).await?;
-            let created_id = result.pointer("/result/0/_id").cloned().unwrap_or(Value::Null);
+            let created_id = result
+                .pointer("/result/0/_id")
+                .cloned()
+                .unwrap_or(Value::Null);
             Ok(text_response(&json!({
                 "created": {"_id": created_id, "name": sheet_name, "type": cc_type},
                 "result": result,
@@ -148,23 +175,40 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let from_arg = str_arg(args, "from").ok_or_else(|| anyhow!("'from' is required"))?;
             let to_arg = str_arg(args, "to").ok_or_else(|| anyhow!("'to' is required"))?;
             let relation = str_arg(args, "relation").unwrap_or_else(|| "associates".into());
-            let from = get_sheet(state, &from_arg).await?
+            let from = get_sheet(state, &from_arg)
+                .await?
                 .ok_or_else(|| anyhow!("Source sheet not found: {from_arg}"))?;
-            let from_data = get_path(&from, "flags.campaign-codex.data").cloned().unwrap_or(json!({}));
+            let from_data = get_path(&from, "flags.campaign-codex.data")
+                .cloned()
+                .unwrap_or(json!({}));
 
             let (target_ref, target_label) = if relation == "linkedActor" {
                 let fields = vec!["_id".into(), "name".into()];
-                let actor = foundry.find_document("actors", &to_arg, Some(&fields)).await?
+                let actor = foundry
+                    .find_document("actors", &to_arg, Some(&fields))
+                    .await?
                     .ok_or_else(|| anyhow!("Actor not found: {to_arg}"))?;
-                (format!("Actor.{}", actor["_id"].as_str().unwrap_or("")),
-                 actor["name"].as_str().unwrap_or("").to_string())
+                (
+                    format!("Actor.{}", actor["_id"].as_str().unwrap_or("")),
+                    actor["name"].as_str().unwrap_or("").to_string(),
+                )
             } else {
-                let to = get_sheet(state, &to_arg).await?
+                let to = get_sheet(state, &to_arg)
+                    .await?
                     .ok_or_else(|| anyhow!("Target sheet not found: {to_arg}"))?;
-                if args.get("bidirectional").and_then(Value::as_bool).unwrap_or(false) {
+                if args
+                    .get("bidirectional")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
                     let to_assoc = get_path(&to, "flags.campaign-codex.data.associates")
-                        .and_then(Value::as_array).cloned().unwrap_or_default();
-                    let from_ref = json!(format!("JournalEntry.{}", from["_id"].as_str().unwrap_or("")));
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+                    let from_ref = json!(format!(
+                        "JournalEntry.{}",
+                        from["_id"].as_str().unwrap_or("")
+                    ));
                     if !to_assoc.contains(&from_ref) {
                         let mut list = to_assoc;
                         list.push(from_ref);
@@ -175,14 +219,20 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         })).await?;
                     }
                 }
-                (format!("JournalEntry.{}", to["_id"].as_str().unwrap_or("")),
-                 to["name"].as_str().unwrap_or("").to_string())
+                (
+                    format!("JournalEntry.{}", to["_id"].as_str().unwrap_or("")),
+                    to["name"].as_str().unwrap_or("").to_string(),
+                )
             };
 
             let update = if relation == "linkedActor" || relation == "linkedLocation" {
                 json!({relation.clone(): target_ref})
             } else {
-                let list = from_data.get(&relation).and_then(Value::as_array).cloned().unwrap_or_default();
+                let list = from_data
+                    .get(&relation)
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
                 if list.contains(&json!(target_ref)) {
                     return Ok(text_response(&json!({
                         "from": from["name"], "to": target_label,

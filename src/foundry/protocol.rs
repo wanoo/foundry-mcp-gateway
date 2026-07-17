@@ -24,12 +24,11 @@ pub fn parse_frame(msg: &str) -> Frame {
     if msg == "2" {
         return Frame::Ping;
     }
-    if let Some(rest) = msg.strip_prefix("0") {
-        if rest.starts_with('{') {
-            if let Ok(v) = serde_json::from_str(rest) {
-                return Frame::Handshake(v);
-            }
-        }
+    if let Some(rest) = msg.strip_prefix("0")
+        && rest.starts_with('{')
+        && let Ok(v) = serde_json::from_str(rest)
+    {
+        return Frame::Handshake(v);
     }
     if let Some(rest) = msg.strip_prefix("40") {
         let v = serde_json::from_str(rest).unwrap_or(Value::Null);
@@ -38,23 +37,26 @@ pub fn parse_frame(msg: &str) -> Frame {
     if let Some(rest) = msg.strip_prefix("43") {
         // "43<digits>[...]"
         let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-        if let Ok(id) = digits.parse::<u64>() {
-            if let Ok(Value::Array(payload)) = serde_json::from_str(&rest[digits.len()..]) {
-                return Frame::Ack(id, payload);
-            }
+        if let Ok(id) = digits.parse::<u64>()
+            && let Ok(Value::Array(payload)) = serde_json::from_str(&rest[digits.len()..])
+        {
+            return Frame::Ack(id, payload);
         }
     }
     if let Some(rest) = msg.strip_prefix("42") {
         // broadcast pur : "42[...]" (un ack id ferait "42<digits>[")
-        if rest.starts_with('[') {
-            if let Ok(Value::Array(mut arr)) = serde_json::from_str::<Value>(rest)
-                .map(|v| if let Value::Array(a) = v { Value::Array(a) } else { Value::Null })
-            {
-                if let Some(Value::String(event)) = arr.first().cloned() {
-                    arr.remove(0);
-                    return Frame::Event(event, arr);
+        if rest.starts_with('[')
+            && let Ok(Value::Array(mut arr)) = serde_json::from_str::<Value>(rest).map(|v| {
+                if let Value::Array(a) = v {
+                    Value::Array(a)
+                } else {
+                    Value::Null
                 }
-            }
+            })
+            && let Some(Value::String(event)) = arr.first().cloned()
+        {
+            arr.remove(0);
+            return Frame::Event(event, arr);
         }
     }
     Frame::Other(msg.to_string())
@@ -82,8 +84,14 @@ mod tests {
     #[test]
     fn parse_les_trames_de_base() {
         assert_eq!(parse_frame("2"), Frame::Ping);
-        assert!(matches!(parse_frame("0{\"sid\":\"x\",\"pingInterval\":20000}"), Frame::Handshake(_)));
-        assert!(matches!(parse_frame("40{\"sid\":\"y\"}"), Frame::SocketConnected(_)));
+        assert!(matches!(
+            parse_frame("0{\"sid\":\"x\",\"pingInterval\":20000}"),
+            Frame::Handshake(_)
+        ));
+        assert!(matches!(
+            parse_frame("40{\"sid\":\"y\"}"),
+            Frame::SocketConnected(_)
+        ));
     }
 
     #[test]
@@ -103,7 +111,10 @@ mod tests {
             f => panic!("attendu Ack, reçu {f:?}"),
         }
         // une émission AVEC ack id n'est PAS un broadcast
-        assert!(matches!(parse_frame(r#"4212["modifyDocument",{}]"#), Frame::Other(_)));
+        assert!(matches!(
+            parse_frame(r#"4212["modifyDocument",{}]"#),
+            Frame::Other(_)
+        ));
     }
 
     #[test]

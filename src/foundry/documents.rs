@@ -91,11 +91,15 @@ pub fn can_use_index(fields: Option<&[String]>, where_: Option<&Map<String, Valu
 
 /// Projection : garde les champs demandés (toujours _id et name).
 pub fn filter_fields(doc: &Value, fields: Option<&[String]>) -> Value {
-    let Some(fields) = fields else { return doc.clone() };
+    let Some(fields) = fields else {
+        return doc.clone();
+    };
     if fields.is_empty() {
         return doc.clone();
     }
-    let Some(obj) = doc.as_object() else { return doc.clone() };
+    let Some(obj) = doc.as_object() else {
+        return doc.clone();
+    };
     let mut out = Map::new();
     for key in fields.iter().map(String::as_str).chain(["_id", "name"]) {
         if let Some(v) = obj.get(key) {
@@ -143,14 +147,32 @@ mod tests {
         let d = docs();
         let w = |v: Value| v.as_object().unwrap().clone();
         let keep = |w_: &Map<String, Value>| {
-            d.iter().filter(|x| matches_where(x, w_)).map(|x| x["_id"].clone()).collect::<Vec<_>>()
+            d.iter()
+                .filter(|x| matches_where(x, w_))
+                .map(|x| x["_id"].clone())
+                .collect::<Vec<_>>()
         };
-        assert_eq!(keep(&w(json!({"flags.campaign-codex.type":"npc"}))), vec![json!("b")]);
-        assert_eq!(keep(&w(json!({"_id__in":["a","c"]}))), vec![json!("a"), json!("c")]);
+        assert_eq!(
+            keep(&w(json!({"flags.campaign-codex.type":"npc"}))),
+            vec![json!("b")]
+        );
+        assert_eq!(
+            keep(&w(json!({"_id__in":["a","c"]}))),
+            vec![json!("a"), json!("c")]
+        );
         assert_eq!(keep(&w(json!({"name__contains":"RIAR"}))), vec![json!("a")]);
-        assert_eq!(keep(&w(json!({"folder__ne":null}))), vec![json!("a"), json!("c")]);
-        assert_eq!(keep(&w(json!({"flags.campaign-codex__exists":true}))), vec![json!("a"), json!("b")]);
-        assert_eq!(keep(&w(json!({"flags.nope.deep":"x"}))), Vec::<Value>::new());
+        assert_eq!(
+            keep(&w(json!({"folder__ne":null}))),
+            vec![json!("a"), json!("c")]
+        );
+        assert_eq!(
+            keep(&w(json!({"flags.campaign-codex__exists":true}))),
+            vec![json!("a"), json!("b")]
+        );
+        assert_eq!(
+            keep(&w(json!({"flags.nope.deep":"x"}))),
+            Vec::<Value>::new()
+        );
     }
 
     #[test]
@@ -165,7 +187,10 @@ mod tests {
         assert!(!can_use_index(None, None));
         assert!(!can_use_index(Some(&f(&["_id", "type"])), None));
         let w2 = json!({"folder":"f1"});
-        assert!(!can_use_index(Some(&f(&["_id"])), Some(w2.as_object().unwrap())));
+        assert!(!can_use_index(
+            Some(&f(&["_id"])),
+            Some(w2.as_object().unwrap())
+        ));
     }
 
     #[test]

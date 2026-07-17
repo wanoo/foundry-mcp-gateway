@@ -3,22 +3,22 @@
 //! Modèle acteur : une tâche possède la connexion ; l'API passe par un handle.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{Map, Value, json};
-use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
-use tokio_tungstenite::tungstenite::Message;
+use serde_json::{json, Map, Value};
+use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
 
 use super::auth::{self, Credential};
 use super::documents::{
     can_use_index, collection_to_type, filter_fields, matches_where, pushdown_query,
 };
-use super::protocol::{Frame, PONG, SOCKET_CONNECT, build_emit, parse_frame};
+use super::protocol::{build_emit, parse_frame, Frame, PONG, SOCKET_CONNECT};
 
 #[derive(Debug, Clone)]
 pub struct BufferedEvent {
@@ -98,7 +98,11 @@ impl FoundryHandle {
         }
         self.shared.active_index.store(index, Ordering::SeqCst);
         // si connecté : la sentinelle fait tomber la connexion → reconnexion
-        let _ = self.shared.outgoing.send(RECONNECT_SENTINEL.to_string()).await;
+        let _ = self
+            .shared
+            .outgoing
+            .send(RECONNECT_SENTINEL.to_string())
+            .await;
         Ok(())
     }
     pub async fn user_id(&self) -> Option<String> {
@@ -114,17 +118,22 @@ impl FoundryHandle {
         self.shared.event_tx.subscribe()
     }
 
-    pub async fn get_events(&self, since: u64, event: Option<&str>, limit: Option<usize>) -> (u64, Vec<BufferedEvent>) {
+    pub async fn get_events(
+        &self,
+        since: u64,
+        event: Option<&str>,
+        limit: Option<usize>,
+    ) -> (u64, Vec<BufferedEvent>) {
         let buf = self.shared.events.lock().await;
         let mut out: Vec<BufferedEvent> = buf
             .iter()
-            .filter(|e| e.seq > since && event.map_or(true, |ev| e.event == ev))
+            .filter(|e| e.seq > since && event.is_none_or(|ev| e.event == ev))
             .cloned()
             .collect();
-        if let Some(l) = limit {
-            if out.len() > l {
-                out = out.split_off(out.len() - l);
-            }
+        if let Some(l) = limit
+            && out.len() > l
+        {
+            out = out.split_off(out.len() - l);
         }
         (self.shared.event_seq.load(Ordering::SeqCst), out)
     }
@@ -165,14 +174,23 @@ impl FoundryHandle {
     }
 
     /// « modifyDocument » — le canal universel (get/create/update/delete).
-    pub async fn modify_document(&self, doc_type: &str, action: &str, operation: Value) -> Result<Value> {
+    pub async fn modify_document(
+        &self,
+        doc_type: &str,
+        action: &str,
+        operation: Value,
+    ) -> Result<Value> {
         let payload = json!({ "type": doc_type, "action": action, "operation": operation });
         let mut reply = self.emit_with_ack("modifyDocument", &[payload]).await?;
-        let data = if reply.is_empty() { Value::Null } else { reply.remove(0) };
-        if let Some(err) = data.get("error") {
-            if !err.is_null() {
-                bail!("erreur Foundry ({doc_type} {action}) : {err}");
-            }
+        let data = if reply.is_empty() {
+            Value::Null
+        } else {
+            reply.remove(0)
+        };
+        if let Some(err) = data.get("error")
+            && !err.is_null()
+        {
+            bail!("erreur Foundry ({doc_type} {action}) : {err}");
         }
         Ok(data)
     }
@@ -229,7 +247,7 @@ impl FoundryHandle {
         }
         let filtered = docs
             .into_iter()
-            .filter(|d| where_.map_or(true, |w| matches_where(d, w)))
+            .filter(|d| where_.is_none_or(|w| matches_where(d, w)))
             .map(|d| filter_fields(&d, fields));
         let out: Vec<Value> = match limit {
             Some(l) => filtered.skip(offset).take(l).collect(),
@@ -269,20 +287,28 @@ impl FoundryHandle {
         id_or_name: &str,
         fields: Option<&[String]>,
     ) -> Result<Option<Value>> {
-        if let Some(d) = self.get_document(collection, Some(id_or_name), None, fields).await? {
+        if let Some(d) = self
+            .get_document(collection, Some(id_or_name), None, fields)
+            .await?
+        {
             return Ok(Some(d));
         }
-        self.get_document(collection, None, Some(id_or_name), fields).await
+        self.get_document(collection, None, Some(id_or_name), fields)
+            .await
     }
 
     /// « manageFiles » (browse, createDirectory) — mêmes payloads que FilePicker.
     pub async fn manage_files(&self, data: Value, options: Value) -> Result<Value> {
         let mut reply = self.emit_with_ack("manageFiles", &[data, options]).await?;
-        let result = if reply.is_empty() { Value::Null } else { reply.remove(0) };
-        if let Some(err) = result.get("error") {
-            if !err.is_null() {
-                bail!("manageFiles : {err}");
-            }
+        let result = if reply.is_empty() {
+            Value::Null
+        } else {
+            reply.remove(0)
+        };
+        if let Some(err) = result.get("error")
+            && !err.is_null()
+        {
+            bail!("manageFiles : {err}");
         }
         Ok(result)
     }
@@ -291,11 +317,15 @@ impl FoundryHandle {
     pub async fn manage_compendium(&self, action: &str, data: Value) -> Result<Value> {
         let payload = json!({ "action": action, "data": data, "options": {} });
         let mut reply = self.emit_with_ack("manageCompendium", &[payload]).await?;
-        let result = if reply.is_empty() { Value::Null } else { reply.remove(0) };
-        if let Some(err) = result.get("error") {
-            if !err.is_null() {
-                bail!("manageCompendium {action} : {err}");
-            }
+        let result = if reply.is_empty() {
+            Value::Null
+        } else {
+            reply.remove(0)
+        };
+        if let Some(err) = result.get("error")
+            && !err.is_null()
+        {
+            bail!("manageCompendium {action} : {err}");
         }
         Ok(result)
     }
@@ -330,10 +360,10 @@ impl FoundryHandle {
             .send()
             .await?;
         let body: Value = resp.json().await.unwrap_or(Value::Null);
-        if let Some(err) = body.get("error") {
-            if !err.is_null() {
-                bail!("upload : {err}");
-            }
+        if let Some(err) = body.get("error")
+            && !err.is_null()
+        {
+            bail!("upload : {err}");
         }
         Ok(body)
     }
@@ -394,16 +424,15 @@ pub fn spawn(credentials: Vec<Credential>) -> FoundryHandle {
         .user_agent("foundry-mcp-gateway")
         .build()
         .expect("client http");
-    let handle = FoundryHandle { shared: shared.clone(), http: http.clone() };
+    let handle = FoundryHandle {
+        shared: shared.clone(),
+        http: http.clone(),
+    };
     tokio::spawn(run_loop(shared, http, out_rx));
     handle
 }
 
-async fn run_loop(
-    shared: Arc<Shared>,
-    http: reqwest::Client,
-    mut out_rx: mpsc::Receiver<String>,
-) {
+async fn run_loop(shared: Arc<Shared>, http: reqwest::Client, mut out_rx: mpsc::Receiver<String>) {
     let mut delay = std::time::Duration::from_secs(5);
     loop {
         match connect_once(&shared, &http, &mut out_rx).await {

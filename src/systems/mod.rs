@@ -21,9 +21,21 @@ pub struct SystemModule {
 
 pub fn all_modules() -> Vec<SystemModule> {
     vec![
-        SystemModule { id: "starwarsffg", definitions: swffg::definitions, handles: swffg::handles },
-        SystemModule { id: "dnd5e", definitions: dnd5e::definitions, handles: dnd5e::handles },
-        SystemModule { id: "daggerheart", definitions: daggerheart::definitions, handles: daggerheart::handles },
+        SystemModule {
+            id: "starwarsffg",
+            definitions: swffg::definitions,
+            handles: swffg::handles,
+        },
+        SystemModule {
+            id: "dnd5e",
+            definitions: dnd5e::definitions,
+            handles: dnd5e::handles,
+        },
+        SystemModule {
+            id: "daggerheart",
+            definitions: daggerheart::definitions,
+            handles: daggerheart::handles,
+        },
     ]
 }
 
@@ -31,8 +43,15 @@ pub fn loaded_modules() -> Vec<SystemModule> {
     match std::env::var("FOUNDRY_SYSTEMS") {
         Err(_) => all_modules(),
         Ok(wanted) => {
-            let ids: Vec<&str> = wanted.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
-            all_modules().into_iter().filter(|m| ids.contains(&m.id)).collect()
+            let ids: Vec<&str> = wanted
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .collect();
+            all_modules()
+                .into_iter()
+                .filter(|m| ids.contains(&m.id))
+                .collect()
         }
     }
 }

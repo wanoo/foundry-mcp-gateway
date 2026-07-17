@@ -7,8 +7,8 @@ pub mod manage;
 pub mod markdown;
 pub mod session;
 
-use anyhow::{Result, anyhow, bail};
-use serde_json::{Map, Value, json};
+use anyhow::{anyhow, bail, Result};
+use serde_json::{json, Map, Value};
 
 use crate::foundry::documents::{can_use_index, filter_fields, get_path};
 use crate::mcp::McpState;
@@ -32,7 +32,11 @@ pub const COLLECTIONS: [(&str, &str, &str); 13] = [
 
 /// pluriel d'outil → nom de collection Foundry.
 fn plural_to_collection(plural: &str) -> &str {
-    if plural == "journals" { "journal" } else { plural }
+    if plural == "journals" {
+        "journal"
+    } else {
+        plural
+    }
 }
 
 pub fn text_response(value: &Value) -> Value {
@@ -55,29 +59,46 @@ pub async fn post_chat(
         "author": state.foundry.user_id().await,
         "flags": flags,
     });
-    if let Some(w) = whisper.and_then(Value::as_array) {
-        if !w.is_empty() {
-            message["whisper"] = json!(w);
-        }
+    if let Some(w) = whisper.and_then(Value::as_array)
+        && !w.is_empty()
+    {
+        message["whisper"] = json!(w);
     }
-    state.foundry.modify_document("ChatMessage", "create", json!({
-        "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-        "data": [message],
-    })).await
+    state
+        .foundry
+        .modify_document(
+            "ChatMessage",
+            "create",
+            json!({
+                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+                "data": [message],
+            }),
+        )
+        .await
 }
 
 /// Tirages sur une RollTable (formule NdM±k + modificateur, sélection par plage).
 pub fn roll_table_draws(table: &Value, modifier: i64, rolls: usize) -> Result<Vec<Value>> {
-    let formula = table.get("formula").and_then(Value::as_str).unwrap_or("1d100")
+    let formula = table
+        .get("formula")
+        .and_then(Value::as_str)
+        .unwrap_or("1d100")
         .replace(char::is_whitespace, "");
     let re = regex::Regex::new(r"^(?i)(\d+)d(\d+)([+-]\d+)?$").unwrap();
-    let caps = re.captures(&formula)
+    let caps = re
+        .captures(&formula)
         .ok_or_else(|| anyhow!("Unsupported table formula '{formula}' (expected NdM±k)"))?;
     let n: i64 = caps[1].parse()?;
     let m: i64 = caps[2].parse()?;
-    let k: i64 = caps.get(3).map(|c| c.as_str().parse().unwrap_or(0)).unwrap_or(0);
+    let k: i64 = caps
+        .get(3)
+        .map(|c| c.as_str().parse().unwrap_or(0))
+        .unwrap_or(0);
     let empty = vec![];
-    let results = table.get("results").and_then(Value::as_array).unwrap_or(&empty);
+    let results = table
+        .get("results")
+        .and_then(Value::as_array)
+        .unwrap_or(&empty);
 
     let mut draws = Vec::new();
     for _ in 0..rolls {
@@ -86,7 +107,8 @@ pub fn roll_table_draws(table: &Value, modifier: i64, rolls: usize) -> Result<Ve
             roll += 1 + (rand::random::<f64>() * m as f64) as i64 % m;
         }
         let hit = results.iter().find(|r| {
-            r.get("range").and_then(Value::as_array)
+            r.get("range")
+                .and_then(Value::as_array)
                 .and_then(|rg| Some((rg.first()?.as_i64()?, rg.get(1)?.as_i64()?)))
                 .map(|(lo, hi)| roll >= lo && roll <= hi)
                 .unwrap_or(false)
@@ -104,7 +126,9 @@ pub fn roll_table_draws(table: &Value, modifier: i64, rolls: usize) -> Result<Ve
 
 /// Troncature par taille JSON (compat `max_length` du serveur TS).
 fn truncate_by_bytes(mut docs: Vec<Value>, max_length: Option<usize>) -> Vec<Value> {
-    let Some(max) = max_length.filter(|m| *m > 0) else { return docs };
+    let Some(max) = max_length.filter(|m| *m > 0) else {
+        return docs;
+    };
     while !docs.is_empty() && Value::Array(docs.clone()).to_string().len() > max {
         docs.pop();
     }
@@ -240,7 +264,11 @@ pub fn definitions() -> Vec<Value> {
         .into_iter()
         .chain(manage::definitions())
         .chain(cc::definitions())
-        .chain(systems::loaded_modules().iter().flat_map(|m| (m.definitions)()))
+        .chain(
+            systems::loaded_modules()
+                .iter()
+                .flat_map(|m| (m.definitions)()),
+        )
     {
         tools.push(tool(name, desc, schema));
     }
@@ -252,12 +280,14 @@ pub fn str_arg(args: &Value, key: &str) -> Option<String> {
 }
 
 pub fn fields_arg(args: &Value) -> Option<Vec<String>> {
-    args.get("requested_fields").and_then(Value::as_array).map(|a| {
-        a.iter()
-            .filter_map(Value::as_str)
-            .map(String::from)
-            .collect()
-    })
+    args.get("requested_fields")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
 }
 
 pub fn where_arg(args: &Value) -> Option<Map<String, Value>> {
@@ -296,12 +326,16 @@ async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     where_.as_ref(),
                     fields.as_deref(),
                     args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize,
-                    args.get("limit").and_then(Value::as_u64).map(|l| l as usize),
+                    args.get("limit")
+                        .and_then(Value::as_u64)
+                        .map(|l| l as usize),
                 )
                 .await?;
             let docs = truncate_by_bytes(
                 docs,
-                args.get("max_length").and_then(Value::as_u64).map(|m| m as usize),
+                args.get("max_length")
+                    .and_then(Value::as_u64)
+                    .map(|m| m as usize),
             );
             return Ok(text_response(&Value::Array(docs)));
         }
@@ -343,32 +377,60 @@ async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         "get_world" => {
             let mut world = foundry.request_world().await?;
             if let Some(obj) = world.as_object_mut() {
-                for key in ["actors", "items", "folders", "users", "scenes", "journal", "macros",
-                            "cards", "playlists", "tables", "combats", "messages", "packs"] {
+                for key in [
+                    "actors",
+                    "items",
+                    "folders",
+                    "users",
+                    "scenes",
+                    "journal",
+                    "macros",
+                    "cards",
+                    "playlists",
+                    "tables",
+                    "combats",
+                    "messages",
+                    "packs",
+                ] {
                     obj.remove(key);
                 }
             }
             Ok(text_response(&world))
         }
         "get_current_scene" => {
-            let where_: Map<String, Value> =
-                json!({"active": true}).as_object().cloned().unwrap();
+            let where_: Map<String, Value> = json!({"active": true}).as_object().cloned().unwrap();
             let fields = fields_arg(args).unwrap_or_else(|| {
-                ["_id", "name", "active", "navigation", "navName", "background"]
-                    .iter().map(|s| s.to_string()).collect()
+                [
+                    "_id",
+                    "name",
+                    "active",
+                    "navigation",
+                    "navName",
+                    "background",
+                ]
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
             });
             let docs = foundry
                 .get_documents("scenes", Some(&where_), Some(&fields), 0, Some(1))
                 .await?;
             Ok(match docs.into_iter().next() {
                 Some(d) => text_response(&d),
-                None => text_response(&json!({"active": null, "note": "No scene is currently active"})),
+                None => {
+                    text_response(&json!({"active": null, "note": "No scene is currently active"}))
+                }
             })
         }
         "search_journals" => {
             let query = str_arg(args, "query").ok_or_else(|| anyhow!("'query' is required"))?;
-            let max = args.get("max_results").and_then(Value::as_u64).unwrap_or(20) as usize;
-            let docs = foundry.get_documents("journal", None, None, 0, None).await?;
+            let max = args
+                .get("max_results")
+                .and_then(Value::as_u64)
+                .unwrap_or(20) as usize;
+            let docs = foundry
+                .get_documents("journal", None, None, 0, None)
+                .await?;
             let needle = query.to_lowercase();
             let strip = regex::Regex::new(r"<[^>]+>").unwrap();
             let mut hits = Vec::new();
@@ -378,8 +440,13 @@ async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     hits.push(json!({"_id": j["_id"], "name": jname, "match": "name"}));
                 }
                 for p in j.get("pages").and_then(Value::as_array).unwrap_or(&vec![]) {
-                    if hits.len() >= max { break 'outer; }
-                    let content = p.pointer("/text/content").and_then(Value::as_str).unwrap_or("");
+                    if hits.len() >= max {
+                        break 'outer;
+                    }
+                    let content = p
+                        .pointer("/text/content")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
                     let text = strip.replace_all(content, " ");
                     let lower = text.to_lowercase();
                     if let Some(idx) = lower.find(&needle) {
@@ -397,7 +464,9 @@ async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         }));
                     }
                 }
-                if hits.len() >= max { break; }
+                if hits.len() >= max {
+                    break;
+                }
             }
             Ok(text_response(&Value::Array(hits)))
         }
@@ -424,52 +493,79 @@ async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         "get_pack_documents" => {
             let doc_type = str_arg(args, "type").ok_or_else(|| anyhow!("'type' is required"))?;
             let pack = str_arg(args, "pack").ok_or_else(|| anyhow!("'pack' is required"))?;
-            let query = args.get("query").and_then(Value::as_object).cloned().unwrap_or_default();
+            let query = args
+                .get("query")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
             let fields = fields_arg(args);
             let use_index = can_use_index(fields.as_deref(), Some(&query));
             let mut docs = foundry
                 .get_collection(&doc_type, query.clone(), use_index, Some(&pack))
                 .await?;
             if use_index && !docs.is_empty() && docs.iter().any(|d| d.get("_id").is_none()) {
-                docs = foundry.get_collection(&doc_type, query, false, Some(&pack)).await?;
+                docs = foundry
+                    .get_collection(&doc_type, query, false, Some(&pack))
+                    .await?;
             }
-            let out: Vec<Value> = docs.iter().map(|d| filter_fields(d, fields.as_deref())).collect();
+            let out: Vec<Value> = docs
+                .iter()
+                .map(|d| filter_fields(d, fields.as_deref()))
+                .collect();
             let out = truncate_by_bytes(
                 out,
-                args.get("max_length").and_then(Value::as_u64).map(|m| m as usize),
+                args.get("max_length")
+                    .and_then(Value::as_u64)
+                    .map(|m| m as usize),
             );
             Ok(text_response(&Value::Array(out)))
         }
         "create_document" | "modify_document" | "delete_document" => {
             let doc_type = str_arg(args, "type").ok_or_else(|| anyhow!("'type' is required"))?;
             let mut op = json!({ "broadcast": false });
-            if let Some(p) = str_arg(args, "parent_uuid") { op["parentUuid"] = json!(p); }
-            if let Some(p) = str_arg(args, "pack") { op["pack"] = json!(p); }
+            if let Some(p) = str_arg(args, "parent_uuid") {
+                op["parentUuid"] = json!(p);
+            }
+            if let Some(p) = str_arg(args, "pack") {
+                op["pack"] = json!(p);
+            }
             let action = match name {
                 "create_document" => {
-                    let data = args.get("data").and_then(Value::as_array)
+                    let data = args
+                        .get("data")
+                        .and_then(Value::as_array)
                         .ok_or_else(|| anyhow!("'data' (array) is required"))?;
                     op["data"] = json!(data);
-                    op["keepId"] = json!(args.get("keep_id").and_then(Value::as_bool).unwrap_or(false));
+                    op["keepId"] = json!(args
+                        .get("keep_id")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false));
                     op["renderSheet"] = json!(false);
                     "create"
                 }
                 "modify_document" => {
                     let id = str_arg(args, "_id").ok_or_else(|| anyhow!("'_id' is required"))?;
-                    let updates = args.get("updates").and_then(Value::as_array)
+                    let updates = args
+                        .get("updates")
+                        .and_then(Value::as_array)
                         .ok_or_else(|| anyhow!("'updates' (array) is required"))?;
-                    let with_ids: Vec<Value> = updates.iter().map(|u| {
-                        let mut u = u.clone();
-                        u["_id"] = json!(id);
-                        u
-                    }).collect();
+                    let with_ids: Vec<Value> = updates
+                        .iter()
+                        .map(|u| {
+                            let mut u = u.clone();
+                            u["_id"] = json!(id);
+                            u
+                        })
+                        .collect();
                     op["updates"] = json!(with_ids);
                     op["diff"] = json!(false);
                     op["recursive"] = json!(true);
                     "update"
                 }
                 _ => {
-                    let ids = args.get("ids").and_then(Value::as_array)
+                    let ids = args
+                        .get("ids")
+                        .and_then(Value::as_array)
                         .ok_or_else(|| anyhow!("'ids' (array) is required"))?;
                     op["ids"] = json!(ids);
                     "delete"
@@ -482,13 +578,18 @@ async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         "get_events" => {
             let since = args.get("since_seq").and_then(Value::as_u64).unwrap_or(0);
             let event = str_arg(args, "event");
-            let limit = args.get("limit").and_then(Value::as_u64).map(|l| l as usize);
+            let limit = args
+                .get("limit")
+                .and_then(Value::as_u64)
+                .map(|l| l as usize);
             let (last_seq, events) = foundry.get_events(since, event.as_deref(), limit).await;
             let events: Vec<Value> = events
                 .into_iter()
                 .map(|e| json!({"seq": e.seq, "event": e.event, "args": e.args}))
                 .collect();
-            Ok(text_response(&json!({"lastSeq": last_seq, "count": events.len(), "events": events})))
+            Ok(text_response(
+                &json!({"lastSeq": last_seq, "count": events.len(), "events": events}),
+            ))
         }
         _ => bail!("Unknown tool: {name}"),
     }
@@ -502,9 +603,17 @@ pub async fn resources_list(state: &McpState, cursor: Option<&str>) -> Result<Va
     let (section, offset) = match cursor {
         None => ("a", 0),
         Some(c) => {
-            let (s, o) = c.split_once(':').ok_or_else(|| anyhow!("Invalid cursor: {c}"))?;
-            (match s { "a" => "a", "j" => "j", _ => bail!("Invalid cursor: {c}") },
-             o.parse::<usize>().unwrap_or(0))
+            let (s, o) = c
+                .split_once(':')
+                .ok_or_else(|| anyhow!("Invalid cursor: {c}"))?;
+            (
+                match s {
+                    "a" => "a",
+                    "j" => "j",
+                    _ => bail!("Invalid cursor: {c}"),
+                },
+                o.parse::<usize>().unwrap_or(0),
+            )
         }
     };
     let fields = vec!["_id".to_string(), "name".to_string()];
@@ -512,7 +621,10 @@ pub async fn resources_list(state: &McpState, cursor: Option<&str>) -> Result<Va
         "a" => ("actors", "actors", "application/json", Some("j:0")),
         _ => ("journal", "journal", "text/html", None),
     };
-    let docs = state.foundry.get_documents(collection, None, Some(&fields), 0, None).await?;
+    let docs = state
+        .foundry
+        .get_documents(collection, None, Some(&fields), 0, None)
+        .await?;
     let page: Vec<Value> = docs
         .iter()
         .skip(offset)
@@ -539,7 +651,9 @@ pub async fn resources_list(state: &McpState, cursor: Option<&str>) -> Result<Va
 
 pub async fn resources_read(state: &McpState, uri: &str) -> Result<Value> {
     let re = regex::Regex::new(r"^foundry://(actors|journal)/([A-Za-z0-9]+)$").unwrap();
-    let caps = re.captures(uri).ok_or_else(|| anyhow!("Unknown resource URI: {uri}"))?;
+    let caps = re
+        .captures(uri)
+        .ok_or_else(|| anyhow!("Unknown resource URI: {uri}"))?;
     let collection = caps.get(1).unwrap().as_str();
     let id = caps.get(2).unwrap().as_str();
     let doc = state
@@ -555,9 +669,16 @@ pub async fn resources_read(state: &McpState, uri: &str) -> Result<Value> {
     }
     let name = doc.get("name").and_then(Value::as_str).unwrap_or("");
     let mut html = format!("<h1>{name}</h1>");
-    for p in doc.get("pages").and_then(Value::as_array).unwrap_or(&vec![]) {
+    for p in doc
+        .get("pages")
+        .and_then(Value::as_array)
+        .unwrap_or(&vec![])
+    {
         let pname = p.get("name").and_then(Value::as_str).unwrap_or("");
-        let content = p.pointer("/text/content").and_then(Value::as_str).unwrap_or("");
+        let content = p
+            .pointer("/text/content")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         html.push_str(&format!("\n<h2>{pname}</h2>\n{content}"));
     }
     let mut contents = vec![json!({ "uri": uri, "mimeType": "text/html", "text": html })];
@@ -592,9 +713,14 @@ pub async fn prompts_get(state: &McpState, name: &str, args: &Value) -> Result<V
     let strip = regex::Regex::new(r"<[^>]+>").unwrap();
     match name {
         "session-recap" => {
-            let max = args.get("max_messages").and_then(Value::as_str)
-                .and_then(|s| s.parse::<usize>().ok()).unwrap_or(50);
-            let messages = foundry.get_documents("messages", None, None, 0, None).await?;
+            let max = args
+                .get("max_messages")
+                .and_then(Value::as_str)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(50);
+            let messages = foundry
+                .get_documents("messages", None, None, 0, None)
+                .await?;
             let recent: Vec<String> = messages
                 .iter()
                 .rev()
@@ -602,7 +728,14 @@ pub async fn prompts_get(state: &McpState, name: &str, args: &Value) -> Result<V
                 .rev()
                 .map(|m| {
                     let content = m.get("content").and_then(Value::as_str).unwrap_or("");
-                    format!("- {}", strip.replace_all(content, " ").split_whitespace().collect::<Vec<_>>().join(" "))
+                    format!(
+                        "- {}",
+                        strip
+                            .replace_all(content, " ")
+                            .split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )
                 })
                 .collect();
             Ok(json!({
@@ -618,9 +751,17 @@ pub async fn prompts_get(state: &McpState, name: &str, args: &Value) -> Result<V
             let status = crate::foundry::auth_status(&foundry.http, &hostname).await;
             let fields = vec!["_id".to_string(), "name".to_string()];
             let where_ = json!({"active": true}).as_object().cloned().unwrap();
-            let scenes = foundry.get_documents("scenes", Some(&where_), Some(&fields), 0, Some(1)).await?;
-            let combats = foundry.get_documents("combats", None, Some(&fields), 0, None).await?;
-            let scene = scenes.first().and_then(|s| s.get("name")).and_then(Value::as_str).unwrap_or("aucune");
+            let scenes = foundry
+                .get_documents("scenes", Some(&where_), Some(&fields), 0, Some(1))
+                .await?;
+            let combats = foundry
+                .get_documents("combats", None, Some(&fields), 0, None)
+                .await?;
+            let scene = scenes
+                .first()
+                .and_then(|s| s.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or("aucune");
             Ok(json!({
                 "description": "Brief de l'état du monde",
                 "messages": [{ "role": "user", "content": { "type": "text", "text": format!(
@@ -635,23 +776,56 @@ pub async fn prompts_get(state: &McpState, name: &str, args: &Value) -> Result<V
         }
         "prep-checklist" => {
             let scene = match args.get("scene").and_then(Value::as_str) {
-                Some(s) => state.foundry.find_document("scenes", s,
-                    Some(&["_id".into(), "name".into(), "tokens".into()])).await?,
+                Some(s) => {
+                    state
+                        .foundry
+                        .find_document(
+                            "scenes",
+                            s,
+                            Some(&["_id".into(), "name".into(), "tokens".into()]),
+                        )
+                        .await?
+                }
                 None => {
                     let w = json!({"active": true}).as_object().cloned().unwrap();
-                    state.foundry.get_documents("scenes", Some(&w),
-                        Some(&["_id".into(), "name".into(), "tokens".into()]), 0, Some(1))
-                        .await?.into_iter().next()
+                    state
+                        .foundry
+                        .get_documents(
+                            "scenes",
+                            Some(&w),
+                            Some(&["_id".into(), "name".into(), "tokens".into()]),
+                            0,
+                            Some(1),
+                        )
+                        .await?
+                        .into_iter()
+                        .next()
                 }
             };
-            let scene_name = scene.as_ref().and_then(|s| s.get("name")).and_then(Value::as_str).unwrap_or("?").to_string();
+            let scene_name = scene
+                .as_ref()
+                .and_then(|s| s.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or("?")
+                .to_string();
             let empty = vec![];
-            let tokens: Vec<&str> = scene.as_ref()
-                .and_then(|s| s.get("tokens")).and_then(Value::as_array).unwrap_or(&empty)
-                .iter().filter_map(|t| t.get("name").and_then(Value::as_str)).collect();
+            let tokens: Vec<&str> = scene
+                .as_ref()
+                .and_then(|s| s.get("tokens"))
+                .and_then(Value::as_array)
+                .unwrap_or(&empty)
+                .iter()
+                .filter_map(|t| t.get("name").and_then(Value::as_str))
+                .collect();
             let fields = vec!["_id".into(), "name".into()];
-            let playlists = state.foundry.get_documents("playlists", None, Some(&fields), 0, None).await?;
-            let pl_names: Vec<&str> = playlists.iter().filter_map(|p| p.get("name").and_then(Value::as_str)).collect();
+            let playlists = state
+                .foundry
+                .get_documents("playlists", None, Some(&fields), 0, None)
+                .await?;
+            let pl_names: Vec<&str> = playlists
+                .iter()
+                .filter_map(|p| p.get("name").and_then(Value::as_str))
+                .collect();
             Ok(json!({
                 "description": format!("Checklist de préparation — {scene_name}"),
                 "messages": [{ "role": "user", "content": { "type": "text", "text": format!(

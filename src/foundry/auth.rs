@@ -2,7 +2,7 @@
 //! (GET /join), login (POST /join). Supporte les hostnames à préfixe de route
 //! (« rpg.example.com/star-wars ») et le binding v13 (query) / v14 (cookie).
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -49,12 +49,11 @@ pub async fn get_session(http: &reqwest::Client, hostname: &str) -> Result<Strin
     let resp = http.get(&url).send().await.context("GET /join")?;
     for cookie in resp.headers().get_all(reqwest::header::SET_COOKIE) {
         let raw = cookie.to_str().unwrap_or_default();
-        if let Some(rest) = raw.strip_prefix("session=") {
-            if let Some(sid) = rest.split(';').next() {
-                if !sid.is_empty() {
-                    return Ok(sid.to_string());
-                }
-            }
+        if let Some(rest) = raw.strip_prefix("session=")
+            && let Some(sid) = rest.split(';').next()
+            && !sid.is_empty()
+        {
+            return Ok(sid.to_string());
         }
     }
     // pas de cookie : session aléatoire 24 hex, comme le client TS
@@ -87,8 +86,7 @@ pub async fn authenticate(
         .context("POST /join")?;
     let status = resp.status();
     let body: Value = resp.json().await.unwrap_or(Value::Null);
-    let ok = status.is_success()
-        && body.get("status").and_then(Value::as_str) == Some("success");
+    let ok = status.is_success() && body.get("status").and_then(Value::as_str) == Some("success");
     if !ok {
         bail!("authentification refusée ({status}) : {body}");
     }
@@ -97,7 +95,11 @@ pub async fn authenticate(
 
 /// URL WebSocket selon la génération : v13 = session en query, v14 = cookie,
 /// inconnue = les deux (stratégie compat, sans risque).
-pub fn socket_url_and_cookie(hostname: &str, session_id: &str, generation: Option<u32>) -> (String, Option<String>) {
+pub fn socket_url_and_cookie(
+    hostname: &str,
+    session_id: &str,
+    generation: Option<u32>,
+) -> (String, Option<String>) {
     let (host, base) = split_host(hostname);
     let transport = "EIO=4&transport=websocket";
     match generation {
@@ -122,7 +124,10 @@ mod tests {
 
     #[test]
     fn split_host_prefixe() {
-        assert_eq!(split_host("rpg.example.com"), ("rpg.example.com".into(), "".into()));
+        assert_eq!(
+            split_host("rpg.example.com"),
+            ("rpg.example.com".into(), "".into())
+        );
         assert_eq!(
             split_host("rpg.example.com/star-wars/"),
             ("rpg.example.com".into(), "/star-wars".into())

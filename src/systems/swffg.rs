@@ -1,11 +1,11 @@
 //! Module starwarsffg : 7 outils (noms historiques sans préfixe).
 //! Chemins vérifiés sur starwarsffg 2.0.3 (fiches réelles).
 
-use anyhow::{Result, anyhow, bail};
-use serde_json::{Value, json};
+use anyhow::{anyhow, bail, Result};
+use serde_json::{json, Value};
 
 use super::swffg_derived::derive_skill_pool;
-use super::swffg_dice::{FfgPool, format_pool, format_result, result_json, roll_ffg_pool};
+use super::swffg_dice::{format_pool, format_result, result_json, roll_ffg_pool, FfgPool};
 use crate::mcp::McpState;
 use crate::tools::{post_chat, roll_table_draws, str_arg, text_response};
 
@@ -95,21 +95,33 @@ pub fn handles(name: &str) -> bool {
 }
 
 fn get_path_num(doc: &Value, dotted: &str) -> i64 {
-    crate::foundry::documents::get_path(doc, dotted).and_then(Value::as_i64).unwrap_or(0)
+    crate::foundry::documents::get_path(doc, dotted)
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
 }
 
 pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
     let foundry = &state.foundry;
     match name {
         "request_player_roll" => {
-            let description = str_arg(args, "description").ok_or_else(|| anyhow!("'description' is required"))?;
+            let description =
+                str_arg(args, "description").ok_or_else(|| anyhow!("'description' is required"))?;
             let mut pool = serde_json::Map::new();
-            for die in ["difficulty", "challenge", "ability", "proficiency", "boost", "setback", "force"] {
+            for die in [
+                "difficulty",
+                "challenge",
+                "ability",
+                "proficiency",
+                "boost",
+                "setback",
+                "force",
+            ] {
                 if let Some(n) = args.get(die).and_then(Value::as_u64).filter(|n| *n > 0) {
                     pool.insert(die.into(), json!(n));
                 }
             }
-            let body = str_arg(args, "content").unwrap_or_else(|| format!("<h3>🎲 {description}</h3>"));
+            let body =
+                str_arg(args, "content").unwrap_or_else(|| format!("<h3>🎲 {description}</h3>"));
             let content = format!(
                 "{body}\n<button class=\"ffg-pool-to-player\">🎲 Lancer — {description}</button>"
             );
@@ -119,10 +131,13 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                           "item": {}, "flavor": "", "sound": null},
             }});
             let result = post_chat(state, &content, flags, args.get("whisper_users")).await?;
-            Ok(text_response(&json!({"posted": description, "pool": pool, "result": result})))
+            Ok(text_response(
+                &json!({"posted": description, "pool": pool, "result": result}),
+            ))
         }
         "roll_ffg_pool" => {
-            let description = str_arg(args, "description").ok_or_else(|| anyhow!("'description' is required"))?;
+            let description =
+                str_arg(args, "description").ok_or_else(|| anyhow!("'description' is required"))?;
             let pool = FfgPool::from_args(args);
             let roll = {
                 let mut rng = rand::rng();
@@ -135,9 +150,13 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     "<h3>🎲 {description}</h3><p>{}</p><p><strong>{summary}</strong></p>",
                     format_pool(&pool)
                 );
-                post_chat(state, &content,
+                post_chat(
+                    state,
+                    &content,
                     json!({"foundry-mcp": {"roll": {"result": result_json(&roll)}}}),
-                    args.get("whisper_users")).await?;
+                    args.get("whisper_users"),
+                )
+                .await?;
                 posted = true;
             }
             Ok(text_response(&json!({
@@ -147,14 +166,24 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         }
         "adjust_actor_stats" => {
             let actor_arg = str_arg(args, "actor").ok_or_else(|| anyhow!("'actor' is required"))?;
-            let requested: Vec<&(&str, &str)> = STAT_PATHS.iter()
+            let requested: Vec<&(&str, &str)> = STAT_PATHS
+                .iter()
                 .filter(|(k, _)| args.get(*k).is_some())
                 .collect();
             if requested.is_empty() {
-                bail!("provide at least one of: {}", STAT_PATHS.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(", "));
+                bail!(
+                    "provide at least one of: {}",
+                    STAT_PATHS
+                        .iter()
+                        .map(|(k, _)| *k)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
             }
             let fields = vec!["_id".into(), "name".into(), "system".into()];
-            let actor = foundry.find_document("actors", &actor_arg, Some(&fields)).await?
+            let actor = foundry
+                .find_document("actors", &actor_arg, Some(&fields))
+                .await?
                 .ok_or_else(|| anyhow!("Actor not found: {actor_arg}"))?;
             let absolute = args.get("set").and_then(Value::as_bool).unwrap_or(false);
             let mut update = serde_json::Map::new();
@@ -168,10 +197,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             }
             let mut update_doc = Value::Object(update);
             update_doc["_id"] = actor["_id"].clone();
-            let result = foundry.modify_document("Actor", "update", json!({
-                "action": "update", "diff": false, "recursive": true, "render": true,
-                "updates": [update_doc],
-            })).await?;
+            let result = foundry
+                .modify_document(
+                    "Actor",
+                    "update",
+                    json!({
+                        "action": "update", "diff": false, "recursive": true, "render": true,
+                        "updates": [update_doc],
+                    }),
+                )
+                .await?;
             Ok(text_response(&json!({
                 "actor": {"_id": actor["_id"], "name": actor["name"]},
                 "mode": if absolute { "set" } else { "delta" },
@@ -181,14 +216,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         "roll_actor_skill" => {
             let actor_arg = str_arg(args, "actor").ok_or_else(|| anyhow!("'actor' is required"))?;
             let skill = str_arg(args, "skill").ok_or_else(|| anyhow!("'skill' is required"))?;
-            let actor = foundry.find_document("actors", &actor_arg, None).await?
+            let actor = foundry
+                .find_document("actors", &actor_arg, None)
+                .await?
                 .ok_or_else(|| anyhow!("Actor not found: {actor_arg}"))?;
             let derived = derive_skill_pool(&actor, &skill)
                 .ok_or_else(|| anyhow!("Skill '{skill}' not found on {}", actor["name"]))?;
             let extra = |k: &str| args.get(k).and_then(Value::as_i64).unwrap_or(0);
-            let setback = (extra("setback")
-                + derived["setback"].as_i64().unwrap_or(0)
-                - derived["removeSetback"].as_i64().unwrap_or(0)).max(0) as u32;
+            let setback = (extra("setback") + derived["setback"].as_i64().unwrap_or(0)
+                - derived["removeSetback"].as_i64().unwrap_or(0))
+            .max(0) as u32;
             let pool = FfgPool {
                 ability: derived["ability"].as_u64().unwrap_or(0) as u32,
                 proficiency: derived["proficiency"].as_u64().unwrap_or(0) as u32,
@@ -206,11 +243,23 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let derivation = format!(
                 "{} {} + rang {}{}",
                 derived["characteristic"].as_str().unwrap_or("?"),
-                derived["characteristicValue"], derived["rank"],
+                derived["characteristicValue"],
+                derived["rank"],
                 {
-                    let s = derived["sources"].as_array().map(|a| a.iter()
-                        .filter_map(Value::as_str).collect::<Vec<_>>().join(", ")).unwrap_or_default();
-                    if s.is_empty() { String::new() } else { format!(" · mods : {s}") }
+                    let s = derived["sources"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .unwrap_or_default();
+                    if s.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" · mods : {s}")
+                    }
                 }
             );
             let mut posted = false;
@@ -237,10 +286,14 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let action = str_arg(args, "action").ok_or_else(|| anyhow!("'action' is required"))?;
             let keys = ["starwarsffg.dPoolLight", "starwarsffg.dPoolDark"];
             let w = json!({"key__in": keys}).as_object().cloned().unwrap();
-            let docs = foundry.get_documents("settings", Some(&w), None, 0, None).await?;
+            let docs = foundry
+                .get_documents("settings", Some(&w), None, 0, None)
+                .await?;
             let read = |key: &str| -> (Option<Value>, i64) {
                 let doc = docs.iter().find(|d| d["key"] == json!(key));
-                let value = doc.and_then(|d| d.get("value")).and_then(Value::as_str)
+                let value = doc
+                    .and_then(|d| d.get("value"))
+                    .and_then(Value::as_str)
                     .and_then(|s| serde_json::from_str::<Value>(s).ok())
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0);
@@ -252,19 +305,29 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             match action.as_str() {
                 "read" => return Ok(text_response(&before)),
                 "spend_light" => {
-                    if light <= 0 { bail!("no light-side destiny point to spend"); }
-                    light -= 1; dark += 1;
+                    if light <= 0 {
+                        bail!("no light-side destiny point to spend");
+                    }
+                    light -= 1;
+                    dark += 1;
                 }
                 "spend_dark" => {
-                    if dark <= 0 { bail!("no dark-side destiny point to spend"); }
-                    dark -= 1; light += 1;
+                    if dark <= 0 {
+                        bail!("no dark-side destiny point to spend");
+                    }
+                    dark -= 1;
+                    light += 1;
                 }
                 "set" => {
                     if args.get("light").is_none() && args.get("dark").is_none() {
                         bail!("set requires light and/or dark");
                     }
-                    if let Some(l) = args.get("light").and_then(Value::as_i64) { light = l.max(0); }
-                    if let Some(d) = args.get("dark").and_then(Value::as_i64) { dark = d.max(0); }
+                    if let Some(l) = args.get("light").and_then(Value::as_i64) {
+                        light = l.max(0);
+                    }
+                    if let Some(d) = args.get("dark").and_then(Value::as_i64) {
+                        dark = d.max(0);
+                    }
                 }
                 other => bail!("Unknown action '{other}'"),
             }
@@ -272,7 +335,9 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 (keys[0], light_id, light, before["light"].as_i64().unwrap()),
                 (keys[1], dark_id, dark, before["dark"].as_i64().unwrap()),
             ] {
-                if value == old { continue; }
+                if value == old {
+                    continue;
+                }
                 match id {
                     Some(doc_id) => {
                         foundry.modify_document("Setting", "update", json!({
@@ -288,17 +353,24 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     }
                 }
             }
-            Ok(text_response(&json!({"action": action, "light": light, "dark": dark, "before": before})))
+            Ok(text_response(
+                &json!({"action": action, "light": light, "dark": dark, "before": before}),
+            ))
         }
         "grant_xp" => {
-            let amount = args.get("amount").and_then(Value::as_i64)
-                .filter(|a| *a != 0).ok_or_else(|| anyhow!("'amount' is required"))?;
+            let amount = args
+                .get("amount")
+                .and_then(Value::as_i64)
+                .filter(|a| *a != 0)
+                .ok_or_else(|| anyhow!("'amount' is required"))?;
             let fields = vec!["_id".into(), "name".into(), "system".into()];
             let targets: Vec<Value> = match args.get("actors").and_then(Value::as_array) {
                 Some(wanted) if !wanted.is_empty() => {
                     let mut list = Vec::new();
                     for w in wanted.iter().filter_map(Value::as_str) {
-                        let a = foundry.find_document("actors", w, Some(&fields)).await?
+                        let a = foundry
+                            .find_document("actors", w, Some(&fields))
+                            .await?
                             .ok_or_else(|| anyhow!("Actor not found: {w}"))?;
                         list.push(a);
                     }
@@ -306,34 +378,56 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 }
                 _ => {
                     let w = json!({"type": "character"}).as_object().cloned().unwrap();
-                    foundry.get_documents("actors", Some(&w), Some(&fields), 0, None).await?
+                    foundry
+                        .get_documents("actors", Some(&w), Some(&fields), 0, None)
+                        .await?
                 }
             };
-            if targets.is_empty() { bail!("no target actors"); }
+            if targets.is_empty() {
+                bail!("no target actors");
+            }
             let mut granted = Vec::new();
             for actor in &targets {
                 let available = get_path_num(actor, "system.experience.available") + amount;
                 let total = get_path_num(actor, "system.experience.total") + amount;
-                foundry.modify_document("Actor", "update", json!({
-                    "action": "update", "diff": false, "recursive": true, "render": true,
-                    "updates": [{"_id": actor["_id"],
-                        "system.experience.available": available,
-                        "system.experience.total": total}],
-                })).await?;
+                foundry
+                    .modify_document(
+                        "Actor",
+                        "update",
+                        json!({
+                            "action": "update", "diff": false, "recursive": true, "render": true,
+                            "updates": [{"_id": actor["_id"],
+                                "system.experience.available": available,
+                                "system.experience.total": total}],
+                        }),
+                    )
+                    .await?;
                 granted.push(json!({"_id": actor["_id"], "name": actor["name"], "available": available, "total": total}));
             }
-            Ok(text_response(&json!({"amount": amount, "granted": granted})))
+            Ok(text_response(
+                &json!({"amount": amount, "granted": granted}),
+            ))
         }
         "apply_critical_injury" => {
             let actor_arg = str_arg(args, "actor").ok_or_else(|| anyhow!("'actor' is required"))?;
             let fields = vec!["_id".into(), "name".into(), "items".into()];
-            let actor = foundry.find_document("actors", &actor_arg, Some(&fields)).await?
+            let actor = foundry
+                .find_document("actors", &actor_arg, Some(&fields))
+                .await?
                 .ok_or_else(|| anyhow!("Actor not found: {actor_arg}"))?;
             let empty = vec![];
-            let existing = actor.get("items").and_then(Value::as_array).unwrap_or(&empty)
-                .iter().filter(|i| i["type"] == json!("criticalinjury")).count();
+            let existing = actor
+                .get("items")
+                .and_then(Value::as_array)
+                .unwrap_or(&empty)
+                .iter()
+                .filter(|i| i["type"] == json!("criticalinjury"))
+                .count();
             let modifier = existing as i64 * 10
-                + args.get("extra_modifier").and_then(Value::as_i64).unwrap_or(0);
+                + args
+                    .get("extra_modifier")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
 
             let table = match str_arg(args, "table") {
                 Some(t) => foundry.find_document("tables", &t, None).await?,
@@ -344,14 +438,20 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         n.contains("crit") && (n.contains("blessure") || n.contains("injur"))
                     })
                 }
-            }.ok_or_else(|| anyhow!("critical-injury RollTable not found (pass 'table')"))?;
+            }
+            .ok_or_else(|| anyhow!("critical-injury RollTable not found (pass 'table')"))?;
 
             let draws = roll_table_draws(&table, modifier, 1)?;
             let draw = &draws[0];
             let text = draw["text"].as_str().unwrap_or("").to_string();
 
             let mut attached = Value::Null;
-            if !args.get("roll_only").and_then(Value::as_bool).unwrap_or(false) && !text.is_empty() {
+            if !args
+                .get("roll_only")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+                && !text.is_empty()
+            {
                 let re = regex::Regex::new(
                     r"@UUID\[Compendium\.([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\.(?:Item\.)?([A-Za-z0-9]+)\]"
                 ).unwrap();
@@ -360,9 +460,13 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     let item_id = &caps[2];
                     let mut query = serde_json::Map::new();
                     query.insert("_id".into(), json!(item_id));
-                    let docs = foundry.get_collection("Item", query, false, Some(pack)).await?;
+                    let docs = foundry
+                        .get_collection("Item", query, false, Some(pack))
+                        .await?;
                     if let Some(mut injury) = docs.into_iter().next() {
-                        if let Some(obj) = injury.as_object_mut() { obj.remove("folder"); }
+                        if let Some(obj) = injury.as_object_mut() {
+                            obj.remove("folder");
+                        }
                         attached = json!({"name": injury["name"]});
                         foundry.modify_document("Item", "create", json!({
                             "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,

@@ -1,8 +1,8 @@
 //! Gestion : settings, ownership, compendiums, import/export, fichiers,
 //! credentials/instances, attente de messages — port des comportements TS.
 
-use anyhow::{Result, anyhow, bail};
-use serde_json::{Value, json};
+use anyhow::{anyhow, bail, Result};
+use serde_json::{json, Value};
 
 use super::markdown::html_to_markdown;
 use super::{str_arg, text_response};
@@ -81,7 +81,11 @@ fn level_num(name: &str) -> Option<u64> {
     LEVELS.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
 }
 fn level_name(v: u64) -> String {
-    LEVELS.iter().find(|(_, n)| *n == v).map(|(s, _)| s.to_string()).unwrap_or_else(|| v.to_string())
+    LEVELS
+        .iter()
+        .find(|(_, n)| *n == v)
+        .map(|(s, _)| s.to_string())
+        .unwrap_or_else(|| v.to_string())
 }
 
 pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
@@ -89,10 +93,15 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
     match name {
         "set_setting" => {
             let key = str_arg(args, "key").ok_or_else(|| anyhow!("'key' is required"))?;
-            let value = args.get("value").cloned().ok_or_else(|| anyhow!("'value' is required"))?;
+            let value = args
+                .get("value")
+                .cloned()
+                .ok_or_else(|| anyhow!("'value' is required"))?;
             let serialized = value.to_string();
             let w = json!({"key": key}).as_object().cloned().unwrap();
-            let existing = foundry.get_documents("settings", Some(&w), None, 0, Some(1)).await?;
+            let existing = foundry
+                .get_documents("settings", Some(&w), None, 0, Some(1))
+                .await?;
             let (action, result) = match existing.first() {
                 Some(doc) => {
                     let r = foundry.modify_document("Setting", "update", json!({
@@ -109,24 +118,38 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     ("created", r)
                 }
             };
-            Ok(text_response(&json!({"action": action, "key": key, "value": value, "result": result})))
+            Ok(text_response(
+                &json!({"action": action, "key": key, "value": value, "result": result}),
+            ))
         }
         "list_actor_ownership" | "set_actor_ownership" => {
             let ufields = vec!["_id".into(), "name".into()];
-            let users = foundry.get_documents("users", None, Some(&ufields), 0, None).await?;
-            let uname = |id: &str| users.iter()
-                .find(|u| u["_id"] == json!(id))
-                .and_then(|u| u["name"].as_str().map(String::from))
-                .unwrap_or_else(|| id.to_string());
+            let users = foundry
+                .get_documents("users", None, Some(&ufields), 0, None)
+                .await?;
+            let uname = |id: &str| {
+                users
+                    .iter()
+                    .find(|u| u["_id"] == json!(id))
+                    .and_then(|u| u["name"].as_str().map(String::from))
+                    .unwrap_or_else(|| id.to_string())
+            };
             let describe = |actor: &Value| {
                 let default_map = serde_json::Map::new();
-                let ownership = actor.get("ownership").and_then(Value::as_object).unwrap_or(&default_map);
-                let entries: Vec<Value> = ownership.iter()
+                let ownership = actor
+                    .get("ownership")
+                    .and_then(Value::as_object)
+                    .unwrap_or(&default_map);
+                let entries: Vec<Value> = ownership
+                    .iter()
                     .filter(|(k, _)| *k != "default")
-                    .map(|(uid, lvl)| json!({
-                        "user": uname(uid), "userId": uid,
-                        "level": level_name(lvl.as_u64().unwrap_or(0)),
-                    })).collect();
+                    .map(|(uid, lvl)| {
+                        json!({
+                            "user": uname(uid), "userId": uid,
+                            "level": level_name(lvl.as_u64().unwrap_or(0)),
+                        })
+                    })
+                    .collect();
                 json!({
                     "_id": actor["_id"], "name": actor["name"],
                     "default": level_name(ownership.get("default").and_then(Value::as_u64).unwrap_or(0)),
@@ -137,32 +160,45 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
 
             if name == "list_actor_ownership" {
                 if let Some(ident) = str_arg(args, "_id").or_else(|| str_arg(args, "name")) {
-                    let actor = foundry.find_document("actors", &ident, Some(&afields)).await?
+                    let actor = foundry
+                        .find_document("actors", &ident, Some(&afields))
+                        .await?
                         .ok_or_else(|| anyhow!("Actor not found"))?;
                     return Ok(text_response(&describe(&actor)));
                 }
-                let actors = foundry.get_documents("actors", None, Some(&afields), 0, None).await?;
-                let interesting: Vec<Value> = actors.iter().map(&describe)
-                    .filter(|d| !d["users"].as_array().unwrap().is_empty() || d["default"] != "none")
+                let actors = foundry
+                    .get_documents("actors", None, Some(&afields), 0, None)
+                    .await?;
+                let interesting: Vec<Value> = actors
+                    .iter()
+                    .map(&describe)
+                    .filter(|d| {
+                        !d["users"].as_array().unwrap().is_empty() || d["default"] != "none"
+                    })
                     .collect();
                 return Ok(text_response(&Value::Array(interesting)));
             }
 
-            let ident = str_arg(args, "_id").or_else(|| str_arg(args, "name"))
+            let ident = str_arg(args, "_id")
+                .or_else(|| str_arg(args, "name"))
                 .ok_or_else(|| anyhow!("Must provide one of: _id or name (actor)"))?;
-            let actor = foundry.find_document("actors", &ident, Some(&afields)).await?
+            let actor = foundry
+                .find_document("actors", &ident, Some(&afields))
+                .await?
                 .ok_or_else(|| anyhow!("Actor not found"))?;
             let mut update = serde_json::Map::new();
             match (str_arg(args, "user"), str_arg(args, "level")) {
                 (Some(uarg), Some(level)) => {
-                    let user = users.iter()
+                    let user = users
+                        .iter()
                         .find(|u| u["_id"] == json!(uarg) || u["name"] == json!(uarg))
                         .ok_or_else(|| anyhow!("User not found: {uarg}"))?;
                     let uid = user["_id"].as_str().unwrap_or("");
                     if level == "none" {
                         update.insert(format!("ownership.-={uid}"), Value::Null);
                     } else {
-                        let lvl = level_num(&level).ok_or_else(|| anyhow!("Unknown level: {level}"))?;
+                        let lvl =
+                            level_num(&level).ok_or_else(|| anyhow!("Unknown level: {level}"))?;
                         update.insert(format!("ownership.{uid}"), json!(lvl));
                     }
                 }
@@ -178,10 +214,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             }
             let mut update_doc = Value::Object(update.clone());
             update_doc["_id"] = actor["_id"].clone();
-            let result = foundry.modify_document("Actor", "update", json!({
-                "action": "update", "diff": false, "recursive": true, "render": true,
-                "updates": [update_doc],
-            })).await?;
+            let result = foundry
+                .modify_document(
+                    "Actor",
+                    "update",
+                    json!({
+                        "action": "update", "diff": false, "recursive": true, "render": true,
+                        "updates": [update_doc],
+                    }),
+                )
+                .await?;
             Ok(text_response(&json!({
                 "actor": {"_id": actor["_id"], "name": actor["name"]},
                 "applied": update, "result": result,
@@ -192,30 +234,49 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let doc_type = str_arg(args, "type").ok_or_else(|| anyhow!("'type' is required"))?;
             let id = str_arg(args, "_id");
             let dname = str_arg(args, "name");
-            if id.is_none() && dname.is_none() { bail!("Must provide one of: _id or name"); }
+            if id.is_none() && dname.is_none() {
+                bail!("Must provide one of: _id or name");
+            }
             let mut query = serde_json::Map::new();
             match (&id, &dname) {
-                (Some(i), _) => { query.insert("_id".into(), json!(i)); }
-                (None, Some(n)) => { query.insert("name".into(), json!(n)); }
+                (Some(i), _) => {
+                    query.insert("_id".into(), json!(i));
+                }
+                (None, Some(n)) => {
+                    query.insert("name".into(), json!(n));
+                }
                 _ => unreachable!(),
             }
-            let docs = foundry.get_collection(&doc_type, query, false, Some(&pack)).await?;
-            let mut doc = docs.into_iter().next()
+            let docs = foundry
+                .get_collection(&doc_type, query, false, Some(&pack))
+                .await?;
+            let mut doc = docs
+                .into_iter()
+                .next()
                 .ok_or_else(|| anyhow!("Document not found in pack {pack}"))?;
-            doc["folder"] = str_arg(args, "folder").map(|f| json!(f)).unwrap_or(Value::Null);
-            let keep_id = args.get("keep_id").and_then(Value::as_bool).unwrap_or(false);
+            doc["folder"] = str_arg(args, "folder")
+                .map(|f| json!(f))
+                .unwrap_or(Value::Null);
+            let keep_id = args
+                .get("keep_id")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             let imported = json!({"_id": doc["_id"], "name": doc["name"]});
             let result = foundry.modify_document(&doc_type, "create", json!({
                 "action": "create", "broadcast": false, "renderSheet": false, "keepId": keep_id,
                 "data": [doc],
             })).await?;
-            Ok(text_response(&json!({"imported": imported, "from": pack, "result": result})))
+            Ok(text_response(
+                &json!({"imported": imported, "from": pack, "result": result}),
+            ))
         }
         "export_journals" => {
             let where_ = args.get("where").and_then(Value::as_object).cloned();
             let offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
             let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(20) as usize;
-            let journals = foundry.get_documents("journal", where_.as_ref(), None, 0, None).await?;
+            let journals = foundry
+                .get_documents("journal", where_.as_ref(), None, 0, None)
+                .await?;
             let total = journals.len();
             let page: Vec<Value> = journals.iter().skip(offset).take(limit).map(|j| {
                 let empty = vec![];
@@ -234,7 +295,9 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         "create_compendium" => {
             let label = str_arg(args, "label").ok_or_else(|| anyhow!("'label' is required"))?;
             let doc_type = str_arg(args, "type").ok_or_else(|| anyhow!("'type' is required"))?;
-            let result = foundry.manage_compendium("create", json!({"label": label, "type": doc_type})).await?;
+            let result = foundry
+                .manage_compendium("create", json!({"label": label, "type": doc_type}))
+                .await?;
             Ok(text_response(&result))
         }
         "delete_compendium" => {
@@ -245,18 +308,20 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         "create_directory" => {
             let target = str_arg(args, "target").ok_or_else(|| anyhow!("'target' is required"))?;
             let source = str_arg(args, "source").unwrap_or_else(|| "data".into());
-            let result = foundry.manage_files(
-                json!({"action": "createDirectory", "storage": source, "target": target}),
-                json!({}),
-            ).await?;
+            let result = foundry
+                .manage_files(
+                    json!({"action": "createDirectory", "storage": source, "target": target}),
+                    json!({}),
+                )
+                .await?;
             Ok(text_response(&result))
         }
         "browse_files" => {
             let target = str_arg(args, "target").ok_or_else(|| anyhow!("'target' is required"))?;
             let ftype = str_arg(args, "type").unwrap_or_else(|| "image".into());
-            let extensions = args.get("extensions").cloned().unwrap_or(json!(
-                [".apng",".avif",".bmp",".gif",".jpeg",".jpg",".png",".svg",".tiff",".webp"]
-            ));
+            let extensions = args.get("extensions").cloned().unwrap_or(json!([
+                ".apng", ".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".tiff", ".webp"
+            ]));
             let result = foundry.manage_files(
                 json!({"action": "browseFiles", "storage": "data", "target": target}),
                 json!({"type": ftype, "extensions": extensions, "wildcard": false, "render": true}),
@@ -265,7 +330,8 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         }
         "upload_file" => {
             let target = str_arg(args, "target").ok_or_else(|| anyhow!("'target' is required"))?;
-            let filename = str_arg(args, "filename").ok_or_else(|| anyhow!("'filename' is required"))?;
+            let filename =
+                str_arg(args, "filename").ok_or_else(|| anyhow!("'filename' is required"))?;
             let url = str_arg(args, "url").filter(|s| !s.is_empty());
             let image_data = str_arg(args, "image_data").filter(|s| !s.is_empty());
             let (bytes, content_type) = match (url, image_data) {
@@ -273,8 +339,12 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 (None, None) => bail!("Must provide either 'url' or 'image_data'"),
                 (Some(u), None) => {
                     let resp = foundry.http.get(&u).send().await?;
-                    let ct = resp.headers().get(reqwest::header::CONTENT_TYPE)
-                        .and_then(|v| v.to_str().ok()).unwrap_or("application/octet-stream").to_string();
+                    let ct = resp
+                        .headers()
+                        .get(reqwest::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("application/octet-stream")
+                        .to_string();
                     (resp.bytes().await?.to_vec(), ct)
                 }
                 (None, Some(b64)) => {
@@ -282,56 +352,98 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     (bytes, content_type_for(&filename))
                 }
             };
-            let result = foundry.upload_file(&target, &filename, bytes, &content_type).await?;
+            let result = foundry
+                .upload_file(&target, &filename, bytes, &content_type)
+                .await?;
             Ok(text_response(&result))
         }
         "show_credentials" => {
             let (active, list) = foundry.credentials_info();
-            Ok(text_response(&json!({"active_index": active, "credentials": list})))
+            Ok(text_response(
+                &json!({"active_index": active, "credentials": list}),
+            ))
         }
         "choose_foundry_instance" => {
             let (_, list) = foundry.credentials_info();
-            let index = match (args.get("item_order").and_then(Value::as_u64), str_arg(args, "_id")) {
+            let index = match (
+                args.get("item_order").and_then(Value::as_u64),
+                str_arg(args, "_id"),
+            ) {
                 (Some(i), _) => i as usize,
-                (None, Some(id)) => list.iter().position(|c| c["_id"] == json!(id))
+                (None, Some(id)) => list
+                    .iter()
+                    .position(|c| c["_id"] == json!(id))
                     .ok_or_else(|| anyhow!("Unknown instance _id: {id}"))?,
                 _ => bail!("Provide item_order or _id"),
             };
             foundry.choose_instance(index).await?;
-            Ok(text_response(&json!({"switching_to": index, "note": "reconnexion en cours (~quelques secondes)"})))
+            Ok(text_response(
+                &json!({"switching_to": index, "note": "reconnexion en cours (~quelques secondes)"}),
+            ))
         }
         "wait_for_message" => {
             let where_ = args.get("where").and_then(Value::as_object).cloned();
-            let timeout_s = args.get("timeout_seconds").and_then(Value::as_u64).unwrap_or(60).min(120);
-            let since = args.get("since_seq").and_then(Value::as_u64)
+            let timeout_s = args
+                .get("timeout_seconds")
+                .and_then(Value::as_u64)
+                .unwrap_or(60)
+                .min(120);
+            let since = args
+                .get("since_seq")
+                .and_then(Value::as_u64)
                 .unwrap_or_else(|| foundry.event_seq());
-            let matched = foundry.wait_for_event(
-                since,
-                std::time::Duration::from_secs(timeout_s),
-                |e| {
-                    if e.event != "modifyDocument" { return false; }
-                    let Some(payload) = e.args.iter().find(|a| a.get("type") == Some(&json!("ChatMessage"))) else {
+            let matched = foundry
+                .wait_for_event(since, std::time::Duration::from_secs(timeout_s), |e| {
+                    if e.event != "modifyDocument" {
+                        return false;
+                    }
+                    let Some(payload) = e
+                        .args
+                        .iter()
+                        .find(|a| a.get("type") == Some(&json!("ChatMessage")))
+                    else {
                         return false;
                     };
-                    if payload.get("action") != Some(&json!("create")) { return false; }
+                    if payload.get("action") != Some(&json!("create")) {
+                        return false;
+                    }
                     let empty = vec![];
-                    let docs = payload.get("result").and_then(Value::as_array).unwrap_or(&empty);
-                    docs.iter().any(|d| where_.as_ref().map_or(true, |w| {
-                        crate::foundry::documents::matches_where(d, w)
-                    }))
-                },
-            ).await;
+                    let docs = payload
+                        .get("result")
+                        .and_then(Value::as_array)
+                        .unwrap_or(&empty);
+                    docs.iter().any(|d| {
+                        where_
+                            .as_ref()
+                            .is_none_or(|w| crate::foundry::documents::matches_where(d, w))
+                    })
+                })
+                .await;
             match matched {
-                None => Ok(text_response(&json!({"timeout": true, "waited_seconds": timeout_s, "messages": []}))),
+                None => Ok(text_response(
+                    &json!({"timeout": true, "waited_seconds": timeout_s, "messages": []}),
+                )),
                 Some(e) => {
-                    let payload = e.args.iter()
+                    let payload = e
+                        .args
+                        .iter()
                         .find(|a| a.get("type") == Some(&json!("ChatMessage")))
-                        .cloned().unwrap_or(Value::Null);
+                        .cloned()
+                        .unwrap_or(Value::Null);
                     let empty = vec![];
-                    let docs = payload.get("result").and_then(Value::as_array).unwrap_or(&empty);
-                    let hits: Vec<Value> = docs.iter()
-                        .filter(|d| where_.as_ref().map_or(true, |w| crate::foundry::documents::matches_where(d, w)))
-                        .cloned().collect();
+                    let docs = payload
+                        .get("result")
+                        .and_then(Value::as_array)
+                        .unwrap_or(&empty);
+                    let hits: Vec<Value> = docs
+                        .iter()
+                        .filter(|d| {
+                            where_
+                                .as_ref()
+                                .is_none_or(|w| crate::foundry::documents::matches_where(d, w))
+                        })
+                        .cloned()
+                        .collect();
                     Ok(text_response(&json!({"timeout": false, "messages": hits})))
                 }
             }
@@ -352,9 +464,13 @@ fn base64_decode(input: &str) -> Result<Vec<u8>> {
     let mut buf = 0u32;
     let mut bits = 0u8;
     for &b in &clean {
-        if b == b'=' { break; }
+        if b == b'=' {
+            break;
+        }
         let v = rev[b as usize];
-        if v == 255 { bail!("base64 invalide"); }
+        if v == 255 {
+            bail!("base64 invalide");
+        }
         buf = (buf << 6) | v as u32;
         bits += 6;
         if bits >= 8 {

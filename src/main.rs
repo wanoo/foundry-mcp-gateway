@@ -6,8 +6,8 @@
 //! préfixe de route), PORT (défaut 8080).
 
 mod foundry;
-mod systems;
 mod mcp;
+mod systems;
 mod tools;
 
 use anyhow::{Context, Result};
@@ -17,15 +17,17 @@ use tracing::info;
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
     let secret = std::env::var("MCP_SECRET").context("MCP_SECRET est requis")?;
-    let creds_json = std::env::var("FOUNDRY_CREDENTIALS_JSON")
-        .context("FOUNDRY_CREDENTIALS_JSON est requis")?;
-    let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(8080);
+    let creds_json =
+        std::env::var("FOUNDRY_CREDENTIALS_JSON").context("FOUNDRY_CREDENTIALS_JSON est requis")?;
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
 
     let credentials = foundry::auth::parse_credentials(&creds_json)?;
     let handle = foundry::client::spawn(credentials);
