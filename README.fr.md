@@ -22,7 +22,7 @@ gérer vos compendiums, préparer vos séances — 24 h/24, tant que le monde to
 - **Rapide** — lectures par collection (jamais de dump complet du monde hors
   `get_world`), filtres poussés côté serveur, listings par index de base de
   données : ~7 000 journaux listés en ~0,3 s.
-- **119 outils** — CRUD générique des documents, outils MJ de séance (montrer un
+- **126 outils** — CRUD générique des documents, outils MJ de séance (montrer un
   journal aux joueurs, combats, playlists, tokens…), plus des **modules de
   systèmes de jeu** (Star Wars FFG, D&D 5e, Daggerheart) que chacun peut étendre.
 - **Bon citoyen MCP** — annotations d'outils (lecture seule/destructif),
@@ -104,7 +104,7 @@ Claude Desktop : *Paramètres → Connecteurs → Ajouter un connecteur personna
 avec la même URL (le secret vit dans l'URL car Desktop ne sait pas poser
 d'en-têtes).
 
-## Les 119 outils
+## Les 126 outils
 
 ### Génériques (66) — pour tous les systèmes de jeu
 
@@ -129,6 +129,22 @@ d'en-têtes).
 
 Tous les modules sont chargés par défaut ; restreignez avec
 `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
+
+### Administration (7) — le plan /setup
+
+`manage_modules` et `admin_edit_world` marchent toujours (session de jeu). Les
+autres `admin_*` n'apparaissent que si `FOUNDRY_ADMIN_PASSWORD` est défini dans
+l'environnement du serveur — ils parlent à l'interface setup de Foundry.
+
+| Outil | Ce qu'il fait |
+|---|---|
+| `admin_status` | `/api/status` — marche même monde éteint ; dit si le mot de passe admin est configuré |
+| `admin_edit_world` | Modifie titre / description / image de fond / date de prochaine session, monde allumé |
+| `manage_modules` | Liste installés vs activés (avec versions), active/désactive (les clients doivent recharger) |
+| `admin_shutdown_world` | Éteint le monde (déconnecte tout le monde, bot compris — il se reconnecte au relancement) ; `confirm:true` requis |
+| `admin_launch_world` | Lance un monde depuis le mode setup (par défaut : le dernier actif) |
+| `admin_check_package` | Une mise à jour existe-t-elle pour un module/système/monde ? (mode setup) |
+| `admin_update_package` | Met à jour un module/système/monde : check → install → vérification (mode setup, refuse si un monde tourne) |
 
 ### Addons famille CC — la suite [wgtnGM](https://campaigncodex.wgtngm.com/)
 

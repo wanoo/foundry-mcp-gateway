@@ -22,7 +22,7 @@ compendia, prep your sessions — 24/7, as long as your world is up.
 - **Fast** — per-collection reads (never a full world dump except `get_world`),
   server-side query pushdown, database-index listings: ~7,000 journals listed
   in ~0.3 s.
-- **119 tools** — generic document CRUD, session-time GM tools (show journals to
+- **126 tools** — generic document CRUD, session-time GM tools (show journals to
   players, combats, playlists, tokens…), plus **game-system modules**
   (Star Wars FFG, D&D 5e, Daggerheart) that anyone can extend.
 - **A good MCP citizen** — tool annotations (read-only/destructive), paginated
@@ -104,7 +104,7 @@ claude mcp add foundry --transport http https://YOUR-DEPLOYMENT/mcp-<secret>
 Claude Desktop: *Settings → Connectors → Add custom connector* with the same URL
 (the secret lives in the URL because Desktop cannot send custom headers).
 
-## The 119 tools
+## The 126 tools
 
 ### Generic (66) — work with any game system
 
@@ -128,6 +128,22 @@ Claude Desktop: *Settings → Connectors → Add custom connector* with the same
 | **Daggerheart** (`daggerheart`) | `dh_roll_duality` (2d12 Hope/Fear, doubles = critical, ±d6 advantage), `dh_roll_actor_trait`, `dh_adjust_stats` (hit points/stress/hope, clamped) |
 
 All modules are loaded by default; restrict with `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
+
+### Administration (7) — the /setup plane
+
+`manage_modules` and `admin_edit_world` always work (game session). The other
+`admin_*` tools only appear when `FOUNDRY_ADMIN_PASSWORD` is set in the server
+environment — they talk to Foundry's setup interface.
+
+| Tool | What it does |
+|---|---|
+| `admin_status` | `/api/status` — works even when the world is down; says if the admin password is configured |
+| `admin_edit_world` | Edit world title / description / background image / next session date, while the world runs |
+| `manage_modules` | List installed vs enabled modules (with versions), enable/disable some (clients must reload) |
+| `admin_shutdown_world` | Shut the world down (kicks everyone, bot included — it reconnects on relaunch); `confirm:true` required |
+| `admin_launch_world` | Launch a world from setup mode (defaults to the last active one) |
+| `admin_check_package` | Is an update available for a module/system/world? (setup mode) |
+| `admin_update_package` | Update a module/system/world: check → install → verify (setup mode, refuses if a world runs) |
 
 ### CC-family addons — the [wgtnGM](https://campaigncodex.wgtngm.com/) suite
 
