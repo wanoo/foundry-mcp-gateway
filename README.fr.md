@@ -309,6 +309,11 @@ Le cœur est 100 % agnostique — tout le spécifique jeu ou addon est un plugin
 Règle d'or dans les deux cas : **vérifiez vos chemins de données sur un monde réel**
 et dites quelle version vous avez validée. `cargo test` doit rester vert.
 
+## 📋 Changelog
+
+Versioned with semver — response shapes only change on a major bump.
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## 📜 Licence
 
 [MIT](LICENSE). Sans affiliation avec Foundry Gaming LLC.

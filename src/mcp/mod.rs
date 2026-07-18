@@ -12,7 +12,9 @@ use tokio::sync::{mpsc, Mutex};
 use crate::foundry::client::FoundryHandle;
 use crate::tools;
 
-pub const PROTOCOL_VERSION: &str = "2025-03-26";
+pub const PROTOCOL_VERSION: &str = "2025-06-18";
+/// Versions de spec acceptées (on renvoie celle demandée si connue).
+pub const SUPPORTED_PROTOCOLS: [&str; 2] = ["2025-06-18", "2025-03-26"];
 pub const SERVER_NAME: &str = "foundry-mcp-gateway";
 pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -31,6 +33,8 @@ pub struct McpState {
     pub admin_password: Option<Arc<String>>,
     /// Dernier id de monde vu actif — cible par défaut d'admin_launch_world.
     pub last_world_id: Arc<Mutex<Option<String>>>,
+    /// FOUNDRY_READONLY : n'expose et n'exécute que les outils en lecture seule.
+    pub readonly: bool,
 }
 
 impl McpState {
@@ -41,6 +45,10 @@ impl McpState {
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
             admin_password: std::env::var("FOUNDRY_ADMIN_PASSWORD").ok().map(Arc::new),
             last_world_id: Arc::new(Mutex::new(None)),
+            readonly: matches!(
+                std::env::var("FOUNDRY_READONLY").unwrap_or_default().as_str(),
+                "1" | "true" | "yes"
+            ),
         }
     }
 
@@ -71,7 +79,10 @@ pub async fn handle_message(state: &McpState, message: &Value) -> Option<Value> 
 
     let result = match method {
         "initialize" => Ok(json!({
-            "protocolVersion": PROTOCOL_VERSION,
+            // On parle la version demandée si on la connaît, la nôtre sinon.
+            "protocolVersion": params.get("protocolVersion").and_then(Value::as_str)
+                .filter(|v| SUPPORTED_PROTOCOLS.contains(v))
+                .unwrap_or(PROTOCOL_VERSION),
             "capabilities": {
                 "tools": {},
                 "resources": { "subscribe": true },

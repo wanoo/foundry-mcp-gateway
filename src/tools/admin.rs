@@ -36,6 +36,14 @@ pub fn definitions(state: &McpState) -> Vec<(&'static str, &'static str, Value)>
          json!({"type":"object","properties":{
             "enable":{"type":"array","items":{"type":"string"},"description":"module ids to enable"},
             "disable":{"type":"array","items":{"type":"string"},"description":"module ids to disable"}}})),
+        ("manage_users",
+         "List the world's user accounts, or create/update/delete them: name, role (player/trusted/assistant/gamemaster), assigned character, colour. PASSWORDS ARE NOT HANDLED HERE — the GM sets them in Foundry (Configure Players); accounts created here start password-less, which Foundry allows.",
+         json!({"type":"object","properties":{
+            "create":{"type":"array","description":"[{name, role?, character?, color?}] — role: player|trusted|assistant|gamemaster (default player)",
+                      "items":{"type":"object"}},
+            "update":{"type":"array","description":"[{_id or name, role?, character?, color?}]",
+                      "items":{"type":"object"}},
+            "delete":{"type":"array","items":{"type":"string"},"description":"user _ids or names to delete (refuses the bot's own account)"}}})),
     ];
     if state.admin_password.is_some() {
         tools.extend([
@@ -48,6 +56,15 @@ pub fn definitions(state: &McpState) -> Vec<(&'static str, &'static str, Value)>
              "Launch a world from setup mode (after admin_shutdown_world). Default: the last world seen active. The bot reconnects automatically once it is up (~10-30 s).",
              json!({"type":"object","properties":{
                 "world":{"type":"string","description":"world id, e.g. star-wars"}}})),
+            ("admin_list_backups",
+             "List the backups Foundry holds (worlds, systems, modules) with their date, size and note. Setup mode only.",
+             json!({"type":"object","properties":{}})),
+            ("admin_backup_world",
+             "Create a backup before doing something risky. Setup mode only (shut the world down first). Defaults to the last active world; pass type/id for a module or system instead.",
+             json!({"type":"object","properties":{
+                "type":{"type":"string","description":"world (default) | module | system"},
+                "id":{"type":"string","description":"package id; defaults to the last active world"},
+                "note":{"type":"string","description":"why you took it — shown in Foundry's backup list"}}})),
             ("admin_check_package",
              "Check if an update is available for a module, system or world (compares installed vs remote manifest). Setup mode only (shut the world down first).",
              json!({"type":"object","properties":{
@@ -55,10 +72,11 @@ pub fn definitions(state: &McpState) -> Vec<(&'static str, &'static str, Value)>
                 "id":{"type":"string"}},
                 "required":["id"]})),
             ("admin_update_package",
-             "Update a module, system or world to its latest version. Setup mode only — refuses if a world is running. Checks first, installs only if an update exists, then verifies.",
+             "Update a module, system or world to its latest version. Setup mode only — refuses if a world is running. Takes a BACKUP first (unless backup:false), checks, installs only if an update exists, retries up to 5 times, then verifies.",
              json!({"type":"object","properties":{
                 "type":{"type":"string","description":"module | system | world (default module)"},
-                "id":{"type":"string"}},
+                "id":{"type":"string"},
+                "backup":{"type":"boolean","description":"back the package up before updating (default true)"}},
                 "required":["id"]})),
         ]);
     }
@@ -132,6 +150,44 @@ async fn setup_post(http: &reqwest::Client, url: &str, body: &Value) -> Result<V
         bail!("POST /setup {} → HTTP {status} : {data}", body["action"]);
     }
     Ok(data)
+}
+
+/// createBackup : l'id porte la convention de Foundry (`type.pkg.AAAA-MM-JJ.epoch`)
+/// — un timestamp est nécessaire, on le prend sur l'horloge système.
+async fn run_backup(
+    http: &reqwest::Client,
+    url: &str,
+    pkg_type: &str,
+    id: &str,
+    note: &str,
+) -> Result<Value> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let days = now / 86_400_000;
+    // date civile depuis l'epoch (algorithme de Howard Hinnant, sans dépendance)
+    let (y, m, d) = {
+        let z = days as i64 + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z.rem_euclid(146_097);
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        (era * 400 + yoe + i64::from(m <= 2), m, d)
+    };
+    let backup_id = format!("{pkg_type}.{id}.{y:04}-{m:02}-{d:02}.{now}");
+    let body = json!({
+        "action": "createBackup",
+        "backups": [{ "type": pkg_type, "packageId": id, "note": note, "id": backup_id }],
+    });
+    let data = setup_post(http, url, &body).await?;
+    Ok(json!({
+        "backedUp": id, "type": pkg_type, "backupId": backup_id,
+        "note": note, "response": data,
+    }))
 }
 
 fn admin_password(state: &McpState) -> Result<&str> {
@@ -303,6 +359,201 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             })))
         }
 
+        "manage_users" => {
+            let bot = state.foundry.user_id().await;
+            let users = state
+                .foundry
+                .get_documents("users", None, None, 0, None)
+                .await?;
+            let find = |key: &str| -> Option<Value> {
+                users
+                    .iter()
+                    .find(|u| u["_id"] == json!(key) || u["name"] == json!(key))
+                    .cloned()
+            };
+            let role_of = |v: Option<&Value>| -> Result<Option<i64>> {
+                let Some(v) = v else { return Ok(None) };
+                if let Some(n) = v.as_i64() {
+                    return Ok(Some(n));
+                }
+                let s = v.as_str().unwrap_or_default().to_lowercase();
+                Ok(Some(match s.as_str() {
+                    "none" => 0,
+                    "player" => 1,
+                    "trusted" => 2,
+                    "assistant" | "assistant gm" | "assistantgm" => 3,
+                    "gamemaster" | "gm" => 4,
+                    other => bail!(
+                        "rôle inconnu : '{other}' (player | trusted | assistant | gamemaster)"
+                    ),
+                }))
+            };
+            let label = |r: i64| match r {
+                0 => "none",
+                1 => "player",
+                2 => "trusted",
+                3 => "assistant",
+                4 => "gamemaster",
+                _ => "?",
+            };
+            let (create, update, delete) = (
+                args.get("create").and_then(Value::as_array),
+                args.get("update").and_then(Value::as_array),
+                args.get("delete").and_then(Value::as_array),
+            );
+            // lecture seule : le tableau de bord des comptes
+            if create.is_none() && update.is_none() && delete.is_none() {
+                let list: Vec<Value> = users
+                    .iter()
+                    .map(|u| {
+                        let r = u.get("role").and_then(Value::as_i64).unwrap_or(0);
+                        json!({
+                            "_id": u["_id"], "name": u["name"],
+                            "role": r, "roleName": label(r),
+                            "character": u.get("character"),
+                            "hasPassword": u.get("password").and_then(Value::as_str)
+                                .map(|p| !p.is_empty()).unwrap_or(false),
+                        })
+                    })
+                    .collect();
+                return Ok(text_response(&json!({ "count": list.len(), "users": list })));
+            }
+            let mut report = json!({});
+            if let Some(items) = create {
+                let mut data = Vec::new();
+                for item in items {
+                    let name = str_arg(item, "name")
+                        .ok_or_else(|| anyhow!("chaque compte à créer a besoin d'un 'name'"))?;
+                    if find(&name).is_some() {
+                        bail!("un utilisateur nommé '{name}' existe déjà");
+                    }
+                    let mut doc = json!({
+                        "name": name,
+                        "role": role_of(item.get("role"))?.unwrap_or(1),
+                    });
+                    for k in ["character", "color"] {
+                        if let Some(v) = item.get(k) {
+                            doc[k] = v.clone();
+                        }
+                    }
+                    data.push(doc);
+                }
+                let r = state
+                    .foundry
+                    .modify_document(
+                        "User",
+                        "create",
+                        json!({ "action": "create", "broadcast": false, "renderSheet": false,
+                                "keepId": false, "data": data }),
+                    )
+                    .await?;
+                report["created"] = r
+                    .get("result")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .map(|u| json!({"_id": u["_id"], "name": u["name"], "role": u["role"]}))
+                            .collect::<Vec<_>>()
+                            .into()
+                    })
+                    .unwrap_or(Value::Null);
+                report["passwordNote"] =
+                    json!("comptes sans mot de passe — à définir dans Foundry (Configurer les joueurs)");
+            }
+            if let Some(items) = update {
+                let mut updates = Vec::new();
+                for item in items {
+                    let key = str_arg(item, "_id")
+                        .or_else(|| str_arg(item, "name"))
+                        .ok_or_else(|| anyhow!("chaque mise à jour a besoin de '_id' ou 'name'"))?;
+                    let existing =
+                        find(&key).ok_or_else(|| anyhow!("utilisateur introuvable : {key}"))?;
+                    let mut u = json!({ "_id": existing["_id"] });
+                    if let Some(r) = role_of(item.get("role"))? {
+                        u["role"] = json!(r);
+                    }
+                    for k in ["character", "color", "name"] {
+                        if let Some(v) = item.get(k) {
+                            u[k] = v.clone();
+                        }
+                    }
+                    updates.push(u);
+                }
+                state
+                    .foundry
+                    .modify_document(
+                        "User",
+                        "update",
+                        json!({ "action": "update", "diff": false, "recursive": true,
+                                "render": true, "updates": updates }),
+                    )
+                    .await?;
+                report["updated"] = json!(updates.len());
+            }
+            if let Some(items) = delete {
+                let mut ids = Vec::new();
+                for item in items {
+                    let key = item.as_str().unwrap_or_default();
+                    let existing =
+                        find(key).ok_or_else(|| anyhow!("utilisateur introuvable : {key}"))?;
+                    let id = existing["_id"].as_str().unwrap_or_default().to_string();
+                    if Some(&id) == bot.as_ref() {
+                        bail!("refus de supprimer le compte du bot MCP lui-même ({key})");
+                    }
+                    ids.push(json!(id));
+                }
+                state
+                    .foundry
+                    .modify_document(
+                        "User",
+                        "delete",
+                        json!({ "action": "delete", "broadcast": false, "deleteAll": false,
+                                "ids": ids }),
+                    )
+                    .await?;
+                report["deleted"] = json!(ids);
+            }
+            Ok(text_response(&report))
+        }
+
+        "admin_list_backups" => {
+            let password = admin_password(state)?;
+            let status = api_status(&url).await?;
+            if let Some(active) = status.get("world").and_then(Value::as_str) {
+                bail!("le monde '{active}' tourne — les sauvegardes exigent le mode setup");
+            }
+            let client = http()?;
+            admin_auth(&client, &url, password).await?;
+            let data = setup_post(&client, &url, &json!({ "action": "listBackups" })).await?;
+            Ok(text_response(&data))
+        }
+
+        "admin_backup_world" => {
+            let password = admin_password(state)?;
+            let pkg_type = str_arg(args, "type").unwrap_or_else(|| "world".into());
+            let id = match str_arg(args, "id") {
+                Some(i) => i,
+                None => state
+                    .last_world_id
+                    .lock()
+                    .await
+                    .clone()
+                    .ok_or_else(|| anyhow!("précisez 'id' (aucun monde vu actif récemment)"))?,
+            };
+            let note = str_arg(args, "note").unwrap_or_else(|| "sauvegarde via MCP".into());
+            let status = api_status(&url).await?;
+            if let Some(active) = status.get("world").and_then(Value::as_str) {
+                bail!(
+                    "le monde '{active}' tourne — la sauvegarde exige le mode setup \
+                     (admin_shutdown_world d'abord)"
+                );
+            }
+            let client = http()?;
+            admin_auth(&client, &url, password).await?;
+            let backup = run_backup(&client, &url, &pkg_type, &id, &note).await?;
+            Ok(text_response(&backup))
+        }
+
         "admin_shutdown_world" => {
             if args.get("confirm").and_then(Value::as_bool) != Some(true) {
                 bail!("confirm:true requis — éteint le monde pour TOUT LE MONDE, bot compris");
@@ -444,6 +695,18 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     "updated": false, "reason": "déjà à jour",
                 })));
             }
+            // Filet : on sauvegarde AVANT de toucher au paquet (désactivable).
+            let backup = if args.get("backup").and_then(Value::as_bool) != Some(false) {
+                match run_backup(&client, &url, &pkg_type, &id, "avant mise à jour (MCP)").await {
+                    Ok(b) => b.get("backupId").cloned().unwrap_or(Value::Null),
+                    Err(e) => bail!(
+                        "sauvegarde préalable échouée ({e:#}) — mise à jour ANNULÉE. \
+                         Relancer avec backup:false pour passer outre."
+                    ),
+                }
+            } else {
+                Value::Null
+            };
             // installPackage répond vite ; la fin réelle se vérifie sur le
             // manifest statique (la version change quand l'extraction est finie).
             // Un téléchargement distant peut échouer (timeout, réseau, miroir) :
@@ -484,6 +747,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 "installedNow": verified,
                 "updated": verified.is_some(),
                 "attempts": attempts,
+                "backupId": backup,
                 "note": if verified.is_some() { "vérifié installé (manifest statique)".to_string() }
                         else { format!("échec après {attempts} tentatives — {last_error}") },
             })))

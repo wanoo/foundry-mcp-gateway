@@ -45,7 +45,13 @@ fn plural_to_collection(plural: &str) -> &str {
 }
 
 pub fn text_response(value: &Value) -> Value {
-    json!({ "content": [{ "type": "text", "text": value.to_string() }] })
+    let mut out = json!({ "content": [{ "type": "text", "text": value.to_string() }] });
+    // MCP 2025-06-18 : les clients récents lisent structuredContent (objets
+    // seulement, par spec) ; le texte reste pour les clients plus anciens.
+    if value.is_object() {
+        out["structuredContent"] = value.clone();
+    }
+    out
 }
 
 /// Contenu image MCP natif (base64 brut, sans préfixe data:) + une légende texte.
@@ -148,14 +154,16 @@ fn truncate_by_bytes(mut docs: Vec<Value>, max_length: Option<usize>) -> Vec<Val
     docs
 }
 
-fn annotations(name: &str) -> Value {
-    let read_only = name.starts_with("get_")
+/// Un outil sans effet de bord sur le monde (sert aux annotations ET au mode
+/// FOUNDRY_READONLY). ⚠️ manage_modules/manage_users ÉCRIVENT : jamais ici.
+pub fn is_read_only(name: &str) -> bool {
+    name.starts_with("get_")
         || name.starts_with("list_")
         || matches!(
             name,
             "admin_status"
                 | "admin_check_package"
-                | "manage_modules"
+                | "admin_list_backups"
                 | "search_journals"
                 | "ping"
                 | "export_journals"
@@ -170,9 +178,12 @@ fn annotations(name: &str) -> Value {
                 | "client_weather_types"
                 | "client_token_fx_presets"
                 | "client_effect_catalog"
-        );
+        )
+}
+
+fn annotations(name: &str) -> Value {
     let destructive = matches!(name, "delete_document" | "delete_compendium");
-    json!({ "readOnlyHint": read_only, "destructiveHint": destructive })
+    json!({ "readOnlyHint": is_read_only(name), "destructiveHint": destructive })
 }
 
 fn tool(name: &str, description: &str, schema: Value) -> Value {
@@ -186,6 +197,7 @@ fn tool(name: &str, description: &str, schema: Value) -> Value {
 
 pub fn definitions(state: &McpState) -> Vec<Value> {
     let mut tools = Vec::new();
+    // (mode lecture seule : filtrage en fin de fonction)
     for (plural, singular, label) in COLLECTIONS {
         tools.push(tool(
             &format!("get_{plural}"),
@@ -309,6 +321,13 @@ pub fn definitions(state: &McpState) -> Vec<Value> {
     {
         tools.push(tool(name, desc, schema));
     }
+    if state.readonly {
+        tools.retain(|t| {
+            t.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(is_read_only)
+        });
+    }
     tools
 }
 
@@ -332,6 +351,12 @@ pub fn where_arg(args: &Value) -> Option<Map<String, Value>> {
 }
 
 pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Value> {
+    if state.readonly && !is_read_only(name) {
+        return Ok(error_response(format!(
+            "Error: '{name}' modifies the world and this gateway runs in read-only mode \
+             (FOUNDRY_READONLY). Only read-only tools are available."
+        )));
+    }
     let result = if session::handles(name) {
         session::run(state, name, args).await
     } else if manage::handles(name) {

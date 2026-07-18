@@ -24,6 +24,15 @@ pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
             "targets":{},
             "timeout_seconds":{"type":"number","description":"default 120"}},
             "required":["question"]})),
+        ("client_roll_formula",
+         "Roll ANY dice formula with Foundry's real Roll engine, on any game system: posts the native chat card and rolls 3D dice if Dice So Nice is installed. Returns the total plus every individual die. Use this for generic rolls (2d6+3, 1d100, @str+2 with an actor's roll data); system tools like roll_actor_skill remain better for system-specific mechanics.",
+         json!({"type":"object","properties":{
+            "formula":{"type":"string","description":"e.g. \"2d6+3\", \"1d20+@abilities.dex.mod\""},
+            "flavor":{"type":"string","description":"chat card label"},
+            "actor":{"type":"string","description":"actor _id: speaker + roll data (@attributes)"},
+            "whisper_gm":{"type":"boolean","description":"whisper the result to GMs only"},
+            "roll_data":{"type":"object","additionalProperties":true,"description":"extra @variables"}},
+            "required":["formula"]})),
         ("client_select",
          "Select tokens on the GM's canvas (real client selection, not a document change) — so the GM sees what you are talking about.",
          json!({"type":"object","properties":{
@@ -96,6 +105,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 .unwrap_or(120)
                 + 15;
             call_companion(state, "ask", a, targets, wait).await?
+        }
+        "client_roll_formula" => {
+            let formula =
+                str_arg(args, "formula").ok_or_else(|| anyhow!("'formula' is required"))?;
+            let mut a = json!({ "formula": formula });
+            carry(args, &["flavor", "whisper_gm", "roll_data"], &mut a);
+            if let Some(actor) = str_arg(args, "actor") {
+                a["actorId"] = json!(actor);
+            }
+            call_companion(state, "roll_formula", a, None, 30).await?
         }
         "client_select" | "client_target" => {
             let tokens = args

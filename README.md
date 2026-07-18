@@ -306,6 +306,11 @@ The core is 100 % system-agnostic — everything game- or addon-specific is a pl
 Ground rule either way: **verify your data paths against a real world** and say which
 version you validated. `cargo test` must stay green.
 
+## 📋 Changelog
+
+Versioned with semver — response shapes only change on a major bump.
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## 📜 License
 
 [MIT](LICENSE). Not affiliated with Foundry Gaming LLC.
