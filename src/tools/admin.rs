@@ -84,7 +84,7 @@ pub fn definitions(state: &McpState) -> Vec<(&'static str, &'static str, Value)>
 }
 
 pub fn handles(name: &str) -> bool {
-    name.starts_with("admin_") || name == "manage_modules"
+    name.starts_with("admin_") || matches!(name, "manage_modules" | "manage_users")
 }
 
 /* ------------------------------------------------------------- plumbing */
