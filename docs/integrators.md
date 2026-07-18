@@ -93,6 +93,11 @@ Representative shapes:
   "controlled": [...], "targeted": [...] }
 ```
 
+`client_ask` is the only tool whose answer comes from the *targeted* client
+(validated live: the reply carries that player's `user`/`userId`). Keep its
+`timeout_seconds` under ~45: most MCP clients abandon a call after ~60 s. The
+answer is not lost — it still arrives in `get_events` on the companion channel.
+
 If no companion is installed/awake, `client_*` tools fail in-band after their
 timeout with an explicit message. Note: the GM's **browser tab must be alive**
 — browsers freeze background tabs, and a frozen tab never answers.

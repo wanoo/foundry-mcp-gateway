@@ -19,7 +19,7 @@ use crate::mcp::McpState;
 pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         ("client_ask",
-         "Ask a player a question in a real dialog on THEIR screen and wait for their answer. targets: 'gm' / 'players' / [userId] (get ids from client_get_state). Returns the chosen option, or answered=false if they dismissed it or the timeout expired.",
+         "Ask a player a question in a real dialog on THEIR screen and wait for their answer. targets: 'gm' / 'players' / [userId] (get ids from client_get_state). Returns the chosen option, or answered=false if they dismissed it or the timeout expired. Keep timeout_seconds around 30-40: MCP clients usually give up on a call after ~60 s — the player's answer still lands in get_events, but your call would have errored out.",
          json!({"type":"object","properties":{
             "question":{"type":"string"},
             "options":{"type":"array","items":{"type":"string"},"description":"button labels (default Oui/Non)"},
