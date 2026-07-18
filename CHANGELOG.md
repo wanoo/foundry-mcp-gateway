@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Response shapes** — the contract documented in
 [docs/integrators.md](docs/integrators.md) — only change on a **major** version.
 
-## [1.1.0] — 2026-07-19
+## [1.2.0] — 2026-07-19
 
 ### Added
 
@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `choose_foundry_instance` only moves the default and no longer tears the
   connection down. Validated live with two concurrent connections under two
   different accounts.
+- **`copy_assets`** — carry the files (maps, tokens, art, audio) along with the
+  documents: walks the source storage, recreates the tree on the target and
+  uploads what's missing, streaming through the gateway so the two servers never
+  need to reach each other. This is what makes a **cross-server** clone actually
+  work, since document image paths alone would dangle.
 - **`copy_documents`** — move content between instances: `where`/`ids` selection,
   `_id`s preserved so `@UUID` links survive, folders recreated, `dry_run`,
   and `overwrite` that **updates** the target's existing twin instead of

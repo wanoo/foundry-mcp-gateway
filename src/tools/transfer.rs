@@ -30,11 +30,24 @@ pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
             "dry_run":{"type":"boolean","description":"report what would be copied without writing anything"},
             "limit":{"type":"number","description":"safety cap (default 200)"}},
             "required":["from","to","collection"]})),
+        ("copy_assets",
+         "Copy files (maps, tokens, art, audio) from one Foundry instance's storage to another — the companion piece to copy_documents when the two worlds live on DIFFERENT servers, otherwise images end up broken. Walks a source directory (recursively by default), recreates the directory tree on the target and uploads what is missing. Existing files are skipped unless overwrite. Start with dry_run.",
+         json!({"type":"object","properties":{
+            "from":{"type":"string","description":"source instance _id"},
+            "to":{"type":"string","description":"target instance _id"},
+            "source_dir":{"type":"string","description":"e.g. worlds/star-wars/assets"},
+            "target_dir":{"type":"string","description":"destination path (default: same as source_dir)"},
+            "recursive":{"type":"boolean","description":"walk sub-directories (default true)"},
+            "extensions":{"type":"array","items":{"type":"string"},"description":"restrict to these, e.g. [\".webp\",\".png\"]"},
+            "overwrite":{"type":"boolean","description":"re-upload files already present in the target (default false)"},
+            "dry_run":{"type":"boolean"},
+            "limit":{"type":"number","description":"safety cap on files (default 100)"}},
+            "required":["from","to","source_dir"]})),
     ]
 }
 
 pub fn handles(name: &str) -> bool {
-    name == "copy_documents"
+    matches!(name, "copy_documents" | "copy_assets")
 }
 
 /// Documents d'une collection sur une instance donnée.
@@ -60,7 +73,176 @@ async fn read_from(
         .await
 }
 
+/// Contenu d'un répertoire de stockage sur une instance.
+async fn browse(
+    state: &McpState,
+    dir: &str,
+    extensions: &Value,
+) -> Result<(Vec<String>, Vec<String>)> {
+    let r = state
+        .foundry
+        .manage_files(
+            json!({"action": "browseFiles", "storage": "data", "target": dir}),
+            json!({"type": "image", "extensions": extensions, "wildcard": false, "render": false}),
+        )
+        .await?;
+    let take = |k: &str| -> Vec<String> {
+        r.get(k)
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    Ok((take("dirs"), take("files")))
+}
+
+/// Toutes les extensions gérées par Foundry (images, audio, vidéo) — un asset
+/// de scène peut être un .webm ou un .ogg autant qu'un .webp.
+fn all_extensions() -> Value {
+    json!([
+        ".apng", ".avif", ".bmp", ".gif", ".jpeg", ".jpg", ".png", ".svg", ".tiff", ".webp",
+        ".aac", ".flac", ".m4a", ".mid", ".mp3", ".ogg", ".opus", ".wav", ".webm", ".mp4", ".ogv",
+        ".json", ".pdf", ".txt", ".md"
+    ])
+}
+
+async fn copy_assets(state: &McpState, args: &Value) -> Result<Value> {
+    let from = str_arg(args, "from").ok_or_else(|| anyhow!("'from' is required"))?;
+    let to = str_arg(args, "to").ok_or_else(|| anyhow!("'to' is required"))?;
+    if from == to {
+        bail!("'from' et 'to' désignent la même instance ('{from}')");
+    }
+    let source_dir = str_arg(args, "source_dir").ok_or_else(|| anyhow!("'source_dir' required"))?;
+    let target_dir = str_arg(args, "target_dir").unwrap_or_else(|| source_dir.clone());
+    let recursive = args
+        .get("recursive")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let overwrite = args
+        .get("overwrite")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let dry_run = args
+        .get("dry_run")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(100) as usize;
+    let extensions = args
+        .get("extensions")
+        .cloned()
+        .unwrap_or_else(all_extensions);
+
+    let src = state.resolve(Some(&from)).await?;
+    let dst = state.resolve(Some(&to)).await?;
+
+    // 1 · parcourir la source (largeur d'abord, pour un rapport lisible)
+    let mut queue = vec![source_dir.clone()];
+    let mut files: Vec<String> = Vec::new();
+    let mut dirs: Vec<String> = vec![source_dir.clone()];
+    while let Some(dir) = queue.pop() {
+        let (sub, found) = browse(&src, &dir, &extensions).await?;
+        files.extend(found);
+        if recursive {
+            for d in sub {
+                dirs.push(d.clone());
+                queue.push(d);
+            }
+        }
+        if files.len() > limit * 4 {
+            break; // garde-fou : arborescence démesurée
+        }
+    }
+    let found_total = files.len();
+    let truncated = found_total > limit;
+    files.truncate(limit);
+
+    // 2 · ce qui manque côté cible
+    let rebase = |p: &str| -> String { p.replacen(&source_dir, &target_dir, 1) };
+    let mut missing = Vec::new();
+    for f in &files {
+        let dest = rebase(f);
+        let parent = dest
+            .rsplit_once('/')
+            .map(|(d, _)| d.to_string())
+            .unwrap_or_default();
+        let (_, present) = browse(&dst, &parent, &extensions).await.unwrap_or_default();
+        if overwrite || !present.contains(&dest) {
+            missing.push((f.clone(), dest));
+        }
+    }
+
+    if dry_run {
+        return Ok(text_response(&json!({
+            "dry_run": true, "from": from, "to": to,
+            "sourceDir": source_dir, "targetDir": target_dir,
+            "directories": dirs.len(), "filesFound": found_total,
+            "wouldUpload": missing.len(), "truncated": truncated,
+            "sample": missing.iter().take(5).map(|(s, _)| s).collect::<Vec<_>>(),
+        })));
+    }
+
+    // 3 · créer l'arborescence cible puis transférer, fichier par fichier
+    for d in &dirs {
+        let _ = dst
+            .foundry
+            .manage_files(
+                json!({"action": "createDirectory", "storage": "data", "target": rebase(d)}),
+                json!({}),
+            )
+            .await; // déjà existant = pas une erreur pour nous
+    }
+    let (host, base) = crate::foundry::auth::split_host(&src.foundry.hostname());
+    let mut uploaded = 0usize;
+    let mut failed = Vec::new();
+    for (source_path, dest_path) in &missing {
+        let url = format!("https://{host}{base}/{source_path}");
+        let dir = dest_path
+            .rsplit_once('/')
+            .map(|(d, _)| d.to_string())
+            .unwrap_or_default();
+        let filename = dest_path.rsplit('/').next().unwrap_or_default().to_string();
+        // On rapatrie via la passerelle : le serveur cible n'a pas besoin
+        // d'atteindre le serveur source (ils peuvent être sur deux réseaux).
+        match src.foundry.http.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let ct = resp
+                    .headers()
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("application/octet-stream")
+                    .to_string();
+                match resp.bytes().await {
+                    Ok(bytes) => match dst
+                        .foundry
+                        .upload_file(&dir, &filename, bytes.to_vec(), &ct)
+                        .await
+                    {
+                        Ok(_) => uploaded += 1,
+                        Err(e) => failed.push(json!({"file": source_path, "error": e.to_string()})),
+                    },
+                    Err(e) => failed.push(json!({"file": source_path, "error": e.to_string()})),
+                }
+            }
+            Ok(resp) => failed
+                .push(json!({"file": source_path, "error": format!("HTTP {}", resp.status())})),
+            Err(e) => failed.push(json!({"file": source_path, "error": e.to_string()})),
+        }
+    }
+    Ok(text_response(&json!({
+        "from": from, "to": to, "sourceDir": source_dir, "targetDir": target_dir,
+        "filesFound": found_total, "uploaded": uploaded,
+        "skippedExisting": files.len() - missing.len(),
+        "failed": failed, "truncated": truncated,
+    })))
+}
+
 pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
+    if name == "copy_assets" {
+        return copy_assets(state, args).await;
+    }
     if name != "copy_documents" {
         bail!("Unknown tool: {name}");
     }

@@ -5,7 +5,7 @@
 **Give your AI assistant a seat at your gaming table.**
 
 An independent [MCP](https://modelcontextprotocol.io) server for [Foundry VTT](https://foundryvtt.com) —
-one small Rust binary that logs into your world *like a player* and hands your AI **131 tools**
+one small Rust binary that logs into your world *like a player* and hands your AI **132 tools**
 to prep, run, and stage your games.
 
 [![Rust](https://img.shields.io/badge/Rust-single%20binary-orange?logo=rust)](https://www.rust-lang.org)
@@ -264,8 +264,11 @@ copy_documents { from: "sandbox", to: "live", collection: "journals",
                  where: { "folder": "aBcD…" }, dry_run: true }
 ```
 
-Image and audio paths travel as-is: they resolve when both worlds live on the
-same Foundry install (the usual case), not across different servers.
+Different servers? Documents alone would leave dangling image paths, so pair it
+with **`copy_assets`**, which walks the source storage, recreates the tree on the
+target and uploads what's missing (streamed through the gateway — the two servers
+never talk to each other). Both tools are incremental: re-running them only moves
+what changed.
 
 ### 🧠 Beyond tools — native MCP goodies
 

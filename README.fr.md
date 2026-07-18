@@ -6,7 +6,7 @@
 
 Un serveur [MCP](https://modelcontextprotocol.io) indépendant pour [Foundry VTT](https://foundryvtt.com) —
 un petit binaire Rust qui se connecte à votre monde *comme un joueur* et offre à votre IA
-**131 outils** pour préparer, animer et mettre en scène vos parties.
+**132 outils** pour préparer, animer et mettre en scène vos parties.
 
 [![Rust](https://img.shields.io/badge/Rust-un%20seul%20binaire-orange?logo=rust)](https://www.rust-lang.org)
 [![Foundry](https://img.shields.io/badge/Foundry%20VTT-v13%20%7C%20v14-ff6400)](https://foundryvtt.com)
@@ -267,9 +267,11 @@ copy_documents { from: "bac-a-sable", to: "jeu", collection: "journals",
                  where: { "folder": "aBcD…" }, dry_run: true }
 ```
 
-Les chemins d'images et de sons voyagent tels quels : ils résolvent quand les deux
-mondes vivent sur la même installation Foundry (le cas courant), pas entre serveurs
-différents.
+Deux serveurs différents ? Les documents seuls laisseraient des chemins d'images
+dans le vide : complétez avec **`copy_assets`**, qui parcourt le stockage source,
+recrée l'arborescence sur la cible et téléverse ce qui manque (en transitant par la
+passerelle — les deux serveurs n'ont jamais besoin de se joindre). Les deux outils
+sont incrémentaux : les relancer ne déplace que ce qui a changé.
 
 ### 🧠 Au-delà des outils — le MCP natif
 
