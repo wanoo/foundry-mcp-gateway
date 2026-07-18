@@ -5,7 +5,7 @@
 **Give your AI assistant a seat at your gaming table.**
 
 An independent [MCP](https://modelcontextprotocol.io) server for [Foundry VTT](https://foundryvtt.com) —
-one small Rust binary that logs into your world *like a player* and hands your AI **130 tools**
+one small Rust binary that logs into your world *like a player* and hands your AI **131 tools**
 to prep, run, and stage your games.
 
 [![Rust](https://img.shields.io/badge/Rust-single%20binary-orange?logo=rust)](https://www.rust-lang.org)
@@ -149,7 +149,7 @@ Several worlds? Put several objects in the credentials array and switch with
 
 ## 🧙 What your AI can do at your table
 
-130 tools, organized the way a GM works. Read-only tools are flagged so your MCP
+131 tools, organized the way a GM works. Read-only tools are flagged so your MCP
 client can auto-approve them; only deletions are marked destructive.
 
 ### 📖 Prep — build and query your world
@@ -244,6 +244,28 @@ All modules load by default; restrict with `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
 | 💾 `admin_list_backups` / `admin_backup_world` | Foundry's own backups — and `admin_update_package` takes one automatically first |
 | ⏻ `admin_shutdown_world` / `admin_launch_world` | Stop & start worlds (the bot reconnects by itself) |
 | ⬆️ `admin_check_package` / `admin_update_package` | Update modules, **systems**, worlds — check → install → verify, refuses while a world runs |
+
+
+### 🌍 Several worlds at once
+
+Put several objects in `FOUNDRY_CREDENTIALS_JSON` and the gateway serves them
+**simultaneously** — one socket per instance, opened on demand:
+
+- every tool takes an optional `instance` (the `_id` from `show_credentials`);
+- `choose_foundry_instance` only moves the *default* — the others stay connected;
+- **`copy_documents`** moves content between two instances: pick with
+  `where`/`ids`, `_id`s preserved so `@UUID` links survive, folders recreated,
+  `dry_run` to preview, `overwrite` to update the target's twins instead of
+  duplicating them.
+
+```jsonc
+// "prep in my sandbox world, then push to the live one"
+copy_documents { from: "sandbox", to: "live", collection: "journals",
+                 where: { "folder": "aBcD…" }, dry_run: true }
+```
+
+Image and audio paths travel as-is: they resolve when both worlds live on the
+same Foundry install (the usual case), not across different servers.
 
 ### 🧠 Beyond tools — native MCP goodies
 

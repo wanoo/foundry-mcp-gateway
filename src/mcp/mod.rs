@@ -9,6 +9,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use tokio::sync::{Mutex, mpsc};
 
+use crate::foundry::auth::Credential;
 use crate::foundry::client::FoundryHandle;
 use crate::tools;
 
@@ -35,10 +36,23 @@ pub struct McpState {
     pub last_world_id: Arc<Mutex<Option<String>>>,
     /// FOUNDRY_READONLY : n'expose et n'exécute que les outils en lecture seule.
     pub readonly: bool,
+    /// Toutes les instances configurées (FOUNDRY_CREDENTIALS_JSON).
+    pub credentials: Arc<Vec<Credential>>,
+    /// Connexions vivantes, une par instance utilisée — ouvertes à la demande.
+    pub pool: Arc<Mutex<HashMap<String, FoundryHandle>>>,
+    /// Instance visée par défaut quand un appel ne précise pas `instance`.
+    pub active: Arc<Mutex<String>>,
 }
 
 impl McpState {
-    pub fn new(foundry: FoundryHandle) -> Self {
+    pub fn new(foundry: FoundryHandle, credentials: Vec<Credential>) -> Self {
+        let first = credentials
+            .first()
+            .map(|c| c.id.clone())
+            .unwrap_or_default();
+        let mut pool = HashMap::new();
+        // La connexion déjà ouverte au démarrage sert la première instance.
+        pool.insert(first.clone(), foundry.clone());
         Self {
             foundry,
             sessions: Arc::new(Mutex::new(HashMap::new())),
@@ -51,7 +65,51 @@ impl McpState {
                     .as_str(),
                 "1" | "true" | "yes"
             ),
+            credentials: Arc::new(credentials),
+            pool: Arc::new(Mutex::new(pool)),
+            active: Arc::new(Mutex::new(first)),
         }
+    }
+
+    /// L'état vu par une instance donnée — `None` = l'instance active.
+    /// La connexion est ouverte à la demande puis gardée vivante : plusieurs
+    /// mondes sont donc servis SIMULTANÉMENT, une socket chacun.
+    pub async fn resolve(&self, instance: Option<&str>) -> anyhow::Result<McpState> {
+        let id = match instance {
+            Some(i) => i.to_string(),
+            None => self.active.lock().await.clone(),
+        };
+        let handle = {
+            let mut pool = self.pool.lock().await;
+            match pool.get(&id) {
+                Some(h) => h.clone(),
+                None => {
+                    let cred = self
+                        .credentials
+                        .iter()
+                        .find(|c| c.id == id)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("instance inconnue : '{id}' (voir show_credentials)")
+                        })?
+                        .clone();
+                    let h = crate::foundry::client::spawn(vec![cred]);
+                    pool.insert(id.clone(), h.clone());
+                    h
+                }
+            }
+        };
+        // Connexion fraîche : lui laisser le temps de s'établir, sinon le
+        // premier appel échouerait bêtement sur « Not connected ».
+        for _ in 0..40 {
+            if handle.is_connected() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+        Ok(McpState {
+            foundry: handle,
+            ..self.clone()
+        })
     }
 
     pub async fn notify_all(&self, notification: Value) {

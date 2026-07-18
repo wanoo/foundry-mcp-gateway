@@ -11,6 +11,7 @@ pub mod manage;
 pub mod markdown;
 pub mod session;
 pub mod table;
+pub mod transfer;
 
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Map, Value, json};
@@ -187,6 +188,18 @@ fn annotations(name: &str) -> Value {
 }
 
 fn tool(name: &str, description: &str, schema: Value) -> Value {
+    // Chaque outil accepte `instance` : le monde visé (voir show_credentials).
+    let mut schema = schema;
+    if !matches!(
+        name,
+        "copy_documents" | "show_credentials" | "choose_foundry_instance"
+    ) && let Some(props) = schema.get_mut("properties").and_then(Value::as_object_mut)
+    {
+        props.insert(
+            "instance".to_string(),
+            json!({"type":"string","description":"target Foundry instance _id (default: the active one) — several worlds can be served at once"}),
+        );
+    }
     json!({
         "name": name,
         "description": description,
@@ -312,6 +325,7 @@ pub fn definitions(state: &McpState) -> Vec<Value> {
         .chain(insight::definitions())
         .chain(table::definitions())
         .chain(admin::definitions(state))
+        .chain(transfer::definitions())
         .chain(companion::definitions())
         .chain(
             systems::loaded_modules()
@@ -351,6 +365,19 @@ pub fn where_arg(args: &Value) -> Option<Map<String, Value>> {
 }
 
 pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Value> {
+    // Multi-mondes : `instance` choisit la connexion Foundry visée. Comme tous
+    // les outils passent par `state.foundry`, il suffit de la substituer ici.
+    let routed;
+    let state = match args.get("instance").and_then(Value::as_str) {
+        Some(inst) => match state.resolve(Some(inst)).await {
+            Ok(s) => {
+                routed = s;
+                &routed
+            }
+            Err(e) => return Ok(error_response(format!("Error: {e:#}"))),
+        },
+        None => state,
+    };
     if state.readonly && !is_read_only(name) {
         return Ok(error_response(format!(
             "Error: '{name}' modifies the world and this gateway runs in read-only mode \
@@ -365,6 +392,8 @@ pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Valu
         cc_family::run(state, name, args).await
     } else if addons::handles(name) {
         addons::run(state, name, args).await
+    } else if transfer::handles(name) {
+        transfer::run(state, name, args).await
     } else if admin::handles(name) {
         admin::run(state, name, args).await
     } else if table::handles(name) {

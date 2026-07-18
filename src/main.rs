@@ -30,8 +30,8 @@ async fn main() -> Result<()> {
         .unwrap_or(8080);
 
     let credentials = foundry::auth::parse_credentials(&creds_json)?;
-    let handle = foundry::client::spawn(credentials);
-    let state = mcp::McpState::new(handle);
+    let handle = foundry::client::spawn(credentials.clone());
+    let state = mcp::McpState::new(handle, credentials);
     mcp::spawn_event_bridge(state.clone());
 
     let app = mcp::http::router(state, &secret);

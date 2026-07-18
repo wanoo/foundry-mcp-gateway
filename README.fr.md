@@ -6,7 +6,7 @@
 
 Un serveur [MCP](https://modelcontextprotocol.io) indépendant pour [Foundry VTT](https://foundryvtt.com) —
 un petit binaire Rust qui se connecte à votre monde *comme un joueur* et offre à votre IA
-**130 outils** pour préparer, animer et mettre en scène vos parties.
+**131 outils** pour préparer, animer et mettre en scène vos parties.
 
 [![Rust](https://img.shields.io/badge/Rust-un%20seul%20binaire-orange?logo=rust)](https://www.rust-lang.org)
 [![Foundry](https://img.shields.io/badge/Foundry%20VTT-v13%20%7C%20v14-ff6400)](https://foundryvtt.com)
@@ -151,7 +151,7 @@ gagné. Plusieurs mondes ? Plusieurs objets dans le tableau, bascule via
 
 ## 🧙 Ce que votre IA peut faire à votre table
 
-130 outils, organisés comme travaille un MJ. Les outils en lecture seule sont
+131 outils, organisés comme travaille un MJ. Les outils en lecture seule sont
 annotés (auto-approbables par votre client MCP) ; seules les suppressions sont
 marquées destructives.
 
@@ -247,6 +247,29 @@ si `FOUNDRY_ADMIN_PASSWORD` est défini.
 | 💾 `admin_list_backups` / `admin_backup_world` | Les sauvegardes natives de Foundry — et `admin_update_package` en prend une automatiquement avant |
 | ⏻ `admin_shutdown_world` / `admin_launch_world` | Éteindre et lancer des mondes (le bot se reconnecte seul) |
 | ⬆️ `admin_check_package` / `admin_update_package` | Mettre à jour modules, **systèmes**, mondes — check → install → vérification, refuse si un monde tourne |
+
+
+### 🌍 Plusieurs mondes à la fois
+
+Mettez plusieurs objets dans `FOUNDRY_CREDENTIALS_JSON` et la passerelle les sert
+**simultanément** — une socket par instance, ouverte à la demande :
+
+- chaque outil accepte un `instance` optionnel (l'`_id` de `show_credentials`) ;
+- `choose_foundry_instance` ne fait que déplacer le *défaut* — les autres restent connectées ;
+- **`copy_documents`** transfère du contenu entre deux instances : sélection par
+  `where`/`ids`, `_id` conservés (les liens `@UUID` survivent), dossiers recréés,
+  `dry_run` pour prévisualiser, `overwrite` pour mettre à jour les jumeaux de la
+  cible au lieu de les dupliquer.
+
+```jsonc
+// « je prépare dans mon monde bac à sable, puis j'envoie vers le monde de jeu »
+copy_documents { from: "bac-a-sable", to: "jeu", collection: "journals",
+                 where: { "folder": "aBcD…" }, dry_run: true }
+```
+
+Les chemins d'images et de sons voyagent tels quels : ils résolvent quand les deux
+mondes vivent sur la même installation Foundry (le cas courant), pas entre serveurs
+différents.
 
 ### 🧠 Au-delà des outils — le MCP natif
 

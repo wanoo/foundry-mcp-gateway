@@ -64,7 +64,7 @@ pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
          "Configured Foundry credentials (no passwords) + which is active.",
          json!({"type":"object","properties":{}})),
         ("choose_foundry_instance",
-         "Switch to another configured Foundry instance (by item_order or _id) — forces reconnection.",
+         "Set the DEFAULT instance for calls that don't pass `instance` (by item_order or _id). Other instances stay connected — every tool accepts `instance`, and copy_documents moves content between them.",
          json!({"type":"object","properties":{
             "item_order":{"type":"number"},"_id":{"type":"string"}}})),
         ("wait_for_message",
@@ -379,10 +379,14 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     .ok_or_else(|| anyhow!("Unknown instance _id: {id}"))?,
                 _ => bail!("Provide item_order or _id"),
             };
-            foundry.choose_instance(index).await?;
-            Ok(text_response(
-                &json!({"switching_to": index, "note": "reconnexion en cours (~quelques secondes)"}),
-            ))
+            // Multi-mondes : on ne coupe plus rien, on déplace juste le défaut.
+            // Les autres instances restent connectées et adressables via `instance`.
+            let id = list[index]["_id"].as_str().unwrap_or_default().to_string();
+            *state.active.lock().await = id.clone();
+            Ok(text_response(&json!({
+                "default_instance": id, "item_order": index,
+                "note": "les autres instances restent connectées — un appel peut viser n'importe laquelle avec `instance`",
+            })))
         }
         "wait_for_message" => {
             let where_ = args.get("where").and_then(Value::as_object).cloned();

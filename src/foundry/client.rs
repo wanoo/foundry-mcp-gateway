@@ -91,20 +91,6 @@ impl FoundryHandle {
             .collect();
         (active, list)
     }
-    /// Bascule d'instance : change l'index actif et force la reconnexion.
-    pub async fn choose_instance(&self, index: usize) -> Result<()> {
-        if index >= self.shared.credentials.len() {
-            bail!("index d'instance invalide : {index}");
-        }
-        self.shared.active_index.store(index, Ordering::SeqCst);
-        // si connecté : la sentinelle fait tomber la connexion → reconnexion
-        let _ = self
-            .shared
-            .outgoing
-            .send(RECONNECT_SENTINEL.to_string())
-            .await;
-        Ok(())
-    }
     pub async fn user_id(&self) -> Option<String> {
         self.shared.user_id.lock().await.clone()
     }

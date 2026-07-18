@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Response shapes** — the contract documented in
 [docs/integrators.md](docs/integrators.md) — only change on a **major** version.
 
+## [1.1.0] — 2026-07-19
+
+### Added
+
+- **Multi-world**: several instances are now served **simultaneously**, one
+  socket each, opened on demand. Every tool accepts an `instance` argument;
+  `choose_foundry_instance` only moves the default and no longer tears the
+  connection down. Validated live with two concurrent connections under two
+  different accounts.
+- **`copy_documents`** — move content between instances: `where`/`ids` selection,
+  `_id`s preserved so `@UUID` links survive, folders recreated, `dry_run`,
+  and `overwrite` that **updates** the target's existing twin instead of
+  duplicating it.
+
 ## [1.0.0] — 2026-07-18
 
 *130 tools · 50 of them read-only · validated against a live Foundry v13.351 world.*
