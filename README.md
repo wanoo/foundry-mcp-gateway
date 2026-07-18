@@ -37,15 +37,36 @@ against your world, from any machine — or free-tier cloud hosting.
 
 ## 🚀 Quick start
 
+**Before you start**, you need:
+
+- a Foundry world **reachable from the internet over HTTPS** (a hosting service,
+  or your own server with a domain — a Foundry that only exists on `localhost`
+  can't be reached by a cloud-hosted gateway);
+- Gamemaster access to it;
+- about 10 minutes.
+
 **1 · Create a bot user in Foundry** — as GM: *Configure Players → Create Additional
-User*, e.g. `MCP-Bot`, role **Gamemaster**, with a password. Grab its 16-char `_id`:
+User*, e.g. `MCP-Bot`, role **Gamemaster**, with a password. Then grab its 16-char
+`_id` — no terminal needed:
+
+> Open `view-source:https://YOUR-HOST/join` in your browser (paste it in the
+> address bar), press <kbd>Ctrl/Cmd+F</kbd>, search `MCP-Bot` — the `"_id"` right
+> next to the name is what you want, e.g. `AbCdEfGh12345678`.
+
+<details>
+<summary>Terminal person? One-liner.</summary>
 
 ```sh
 curl -s https://YOUR-HOST/join | grep -o '{"name":"MCP-Bot"[^}]*'
-# → ..."_id":"AbCdEfGh12345678"...
 ```
+</details>
 
-**2 · Configure & run the server** (anywhere with HTTPS in front):
+**2 · Configure & run the server.** Three ways — **pick one**. No Rust on your
+machine? Use ☁️ Clever Cloud or 🐳 Docker below, they build everything for you.
+Two settings matter everywhere: `MCP_SECRET` (make it long and random — it
+protects your world) and `FOUNDRY_CREDENTIALS_JSON` (who the bot is, where).
+
+With Rust installed, locally:
 
 ```sh
 export MCP_SECRET="a-long-random-string"          # your endpoint: /mcp-<secret>
@@ -108,10 +129,21 @@ claude mcp add foundry --transport http https://YOUR-DEPLOYMENT/mcp-<secret>
 ```
 
 Claude Desktop: *Settings → Connectors → Add custom connector*, same URL.
-Health check: `curl https://YOUR-DEPLOYMENT/health` → `ok`. Several worlds? Put several
-objects in the credentials array and switch with `choose_foundry_instance`.
+Then just ask: *“ping my Foundry”* — a `connected: true` means you're live.
+Several worlds? Put several objects in the credentials array and switch with
+`choose_foundry_instance`.
 
 **4 · (Recommended) install the companion module** — see [below](#-the-companion-module).
+
+### 🆘 If something doesn't work
+
+| Symptom | Likely cause → fix |
+|---|---|
+| `/health` doesn't answer | The server isn't running / wrong URL — check your deployment logs |
+| `ping` says not connected | The world isn't **launched** (login page must be visible), or wrong `userid`/`password` — the server retries forever, fix and wait a few seconds |
+| Every `client_*` tool times out | The companion isn't installed/enabled, **or no GM browser is connected**, or the GM tab is asleep (browsers freeze background tabs — bring it to the front) |
+| Tools disappeared after an update | Your MCP client caches the tool list — reconnect it (Claude Code: `/mcp`) |
+| `admin_*` tools missing | `FOUNDRY_ADMIN_PASSWORD` isn't set on the server |
 
 ## 🧙 What your AI can do at your table
 

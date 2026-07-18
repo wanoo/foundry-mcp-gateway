@@ -37,16 +37,37 @@ Il tourne 24h/24 contre votre monde, depuis n'importe quelle machine.
 
 ## 🚀 Démarrage rapide
 
+**Avant de commencer**, il vous faut :
+
+- un monde Foundry **joignable depuis internet en HTTPS** (hébergeur, ou votre
+  serveur avec un domaine — un Foundry qui ne vit que sur `localhost` est
+  inatteignable pour une passerelle hébergée) ;
+- un accès Gamemaster ;
+- une dizaine de minutes.
+
 **1 · Créez un utilisateur bot dans Foundry** — en MJ : *Configurer les joueurs →
 Créer un utilisateur*, ex. `MCP-Bot`, rôle **Gamemaster**, avec mot de passe.
-Récupérez son `_id` (16 caractères) :
+Puis récupérez son `_id` (16 caractères) — sans terminal :
+
+> Ouvrez `view-source:https://VOTRE-HOTE/join` dans votre navigateur (collez-le
+> dans la barre d'adresse), <kbd>Ctrl/Cmd+F</kbd>, cherchez `MCP-Bot` — le
+> `"_id"` juste à côté du nom est ce qu'il vous faut, ex. `AbCdEfGh12345678`.
+
+<details>
+<summary>À l'aise au terminal ? Une ligne.</summary>
 
 ```sh
 curl -s https://VOTRE-HOTE/join | grep -o '{"name":"MCP-Bot"[^}]*'
-# → ..."_id":"AbCdEfGh12345678"...
 ```
+</details>
 
-**2 · Configurez et lancez le serveur** (n'importe où, derrière HTTPS) :
+**2 · Configurez et lancez le serveur.** Trois voies — **choisissez-en une**.
+Pas de Rust sur votre machine ? ☁️ Clever Cloud ou 🐳 Docker ci-dessous
+construisent tout pour vous. Deux réglages comptent partout : `MCP_SECRET`
+(long et aléatoire — c'est lui qui protège votre monde) et
+`FOUNDRY_CREDENTIALS_JSON` (qui est le bot, où).
+
+Avec Rust installé, en local :
 
 ```sh
 export MCP_SECRET="une-longue-chaine-aleatoire"    # votre endpoint : /mcp-<secret>
@@ -109,10 +130,21 @@ claude mcp add foundry --transport http https://VOTRE-DEPLOIEMENT/mcp-<secret>
 ```
 
 Claude Desktop : *Réglages → Connecteurs → Connecteur personnalisé*, même URL.
-Vérification : `curl https://VOTRE-DEPLOIEMENT/health` → `ok`. Plusieurs mondes ?
-Plusieurs objets dans le tableau, bascule via `choose_foundry_instance`.
+Puis demandez simplement : *« ping mon Foundry »* — un `connected: true` et c'est
+gagné. Plusieurs mondes ? Plusieurs objets dans le tableau, bascule via
+`choose_foundry_instance`.
 
 **4 · (Recommandé) installez le module compagnon** — voir [plus bas](#-le-module-compagnon).
+
+### 🆘 Si quelque chose coince
+
+| Symptôme | Cause probable → remède |
+|---|---|
+| `/health` ne répond pas | Le serveur ne tourne pas / mauvaise URL — voir les logs du déploiement |
+| `ping` dit non connecté | Le monde n'est pas **lancé** (la page de connexion doit être visible), ou mauvais `userid`/`password` — le serveur réessaie en boucle, corrigez et patientez quelques secondes |
+| Tous les `client_*` expirent | Compagnon absent/désactivé, **ou aucun navigateur MJ connecté**, ou l'onglet MJ dort (les navigateurs gèlent les onglets d'arrière-plan — remettez-le au premier plan) |
+| Des outils ont disparu après une mise à jour | Votre client MCP met la liste en cache — reconnectez-le (Claude Code : `/mcp`) |
+| Pas d'outils `admin_*` | `FOUNDRY_ADMIN_PASSWORD` n'est pas défini côté serveur |
 
 ## 🧙 Ce que votre IA peut faire à votre table
 
