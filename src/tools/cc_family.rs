@@ -41,6 +41,9 @@ fn data_defaults(cc_type: &str) -> Value {
     }
 }
 
+// Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
+// ne s'accordent pas sur ces tuples à longues descriptions.
+#[rustfmt::skip]
 pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         ("cc_list_sheets",

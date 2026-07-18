@@ -18,6 +18,9 @@ const CHANNEL: &str = "module.foundry-mcp-gateway-companion";
 
 /// Convention `targets` (commandes de scène) : "all" (défaut), "gm", "players",
 /// ou un tableau d'_id d'utilisateurs.
+// Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
+// ne s'accordent pas sur ces tuples à longues descriptions.
+#[rustfmt::skip]
 pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         ("client_status",

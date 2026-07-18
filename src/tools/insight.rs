@@ -14,6 +14,9 @@ use super::companion::call_companion;
 use super::{image_response, str_arg, text_response};
 use crate::mcp::McpState;
 
+// Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
+// ne s'accordent pas sur ces tuples à longues descriptions.
+#[rustfmt::skip]
 pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         ("client_get_derived",

@@ -128,6 +128,9 @@ pub fn format_d20(r: &D20Result, modifier: i64) -> String {
     format!("d20 {dice} {modifier:+} = {}{outcome}{special}", r.total)
 }
 
+// Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
+// ne s'accordent pas sur ces tuples à longues descriptions.
+#[rustfmt::skip]
 pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         ("dnd5e_roll_check",

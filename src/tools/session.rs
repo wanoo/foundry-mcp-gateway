@@ -38,6 +38,9 @@ pub const CORE_STATUS_EFFECTS: [(&str, &str, &str); 27] = [
     ("upgrade", "Upgraded", "icons/svg/upgrade.svg"),
 ];
 
+// Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
+// ne s'accordent pas sur ces tuples à longues descriptions.
+#[rustfmt::skip]
 pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         ("show_journal_to_players",
