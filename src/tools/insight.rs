@@ -42,11 +42,13 @@ pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
             "max_width":{"type":"number","description":"downscale before encoding (default 900)"},
             "quality":{"type":"number","description":"webp quality 0-1 (default 0.6)"}}})),
         ("client_babele",
-         "Babele: the TRANSLATED view of a compendium as the players see it (the server only ever reads the source language). No args: list the translated packs. With pack: translated index (source vs displayed names). With pack + id/name: the full translated document.",
+         "Babele: the TRANSLATED view of compendia as the players see them (the server only ever reads the source language). 'query': REVERSE search — find documents by their displayed (translated) OR source name across all translated packs; use this when the user names things in their own language. No args: list translated packs. pack alone: translated index. pack + id/name/ids: full translated document(s).",
          json!({"type":"object","properties":{
-            "pack":{"type":"string","description":"compendium collection, e.g. starwarsffg.talents"},
+            "query":{"type":"string","description":"search displayed or source names across translated packs"},
+            "pack":{"type":"string","description":"compendium collection, e.g. starwarsffg.talents (restricts query too)"},
             "id":{"type":"string"},"name":{"type":"string"},
-            "limit":{"type":"number","description":"index entries (default 100)"}}})),
+            "ids":{"type":"array","items":{"type":"string"},"description":"batch: several documents at once"},
+            "limit":{"type":"number","description":"index/search entries (default 100)"}}})),
         ("client_scene_report",
          "Playable state of the active scene as the GM's client sees it: tokens with grid coordinates, disposition, and REAL visibility (vision + fog), doors and their open/closed state, lights, measured templates, current selection and targets.",
          json!({"type":"object","properties":{
@@ -121,7 +123,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         }
         "client_babele" => {
             let mut a = json!({});
-            for k in ["pack", "id", "name", "limit"] {
+            for k in ["query", "pack", "id", "name", "ids", "limit"] {
                 if let Some(v) = args.get(k) {
                     a[k] = v.clone();
                 }

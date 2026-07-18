@@ -201,7 +201,7 @@ Les outils compagnon récents, groupés par ce qu'ils débloquent :
 | | `client_search` | Recherche par nom sur toutes les collections du monde via l'index client (renvoie les uuids) |
 | | `client_capture` | Capture de la vue du MJ, renvoyée en vraie image MCP — l'IA voit littéralement la table |
 | | `client_scene_report` | État jouable de la scène : tokens en cases, disposition et visibilité RÉELLE, portes ouvertes/fermées, lumières, gabarits, sélection, cibles |
-| | `client_babele` | [Babele](https://foundryvtt.com/packages/babele) : la vue TRADUITE d'un compendium telle que les joueurs la voient (le serveur ne lit que la langue source) |
+| | `client_babele` | [Babele](https://foundryvtt.com/packages/babele) : la vue TRADUITE des compendiums — recherche inverse par nom affiché OU source (retrouver « Force Lightning » depuis « Éclair de Force »), index traduit, document(s) traduit(s) |
 | **Table** | `client_ask` | Pose une question à un joueur dans un vrai dialogue sur SON écran et récupère sa réponse |
 | | `client_select` / `client_target` | Sélection / cibles réelles sur le canvas du MJ — montrer de quoi on parle |
 | | `client_fog` | Réinitialise le brouillard exploré de la scène active |

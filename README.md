@@ -197,7 +197,7 @@ The newer companion tools, grouped by what they unlock:
 | | `client_search` | Name search across every world collection via the client index (returns uuids) |
 | | `client_capture` | Screenshot of the GM's canvas view, returned as a real MCP image — the AI literally sees the table |
 | | `client_scene_report` | Playable scene state: tokens with grid coords, disposition and REAL visibility, doors open/closed, lights, templates, selection, targets |
-| | `client_babele` | [Babele](https://foundryvtt.com/packages/babele): the TRANSLATED view of a compendium as players see it (the server only reads the source language) |
+| | `client_babele` | [Babele](https://foundryvtt.com/packages/babele): the TRANSLATED view of compendia — reverse search by displayed OR source name (find « Force Lightning » from « Éclair de Force »), translated index, translated document(s) |
 | **Table** | `client_ask` | Ask a player a question in a real dialog on THEIR screen and get their answer back |
 | | `client_select` / `client_target` | Real selection / crosshair targets on the GM's canvas — show what you're talking about |
 | | `client_fog` | Reset the explored fog of war on the active scene |
