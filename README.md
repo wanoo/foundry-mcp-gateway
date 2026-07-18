@@ -22,7 +22,7 @@ compendia, prep your sessions — 24/7, as long as your world is up.
 - **Fast** — per-collection reads (never a full world dump except `get_world`),
   server-side query pushdown, database-index listings: ~7,000 journals listed
   in ~0.3 s.
-- **104 tools** — generic document CRUD, session-time GM tools (show journals to
+- **119 tools** — generic document CRUD, session-time GM tools (show journals to
   players, combats, playlists, tokens…), plus **game-system modules**
   (Star Wars FFG, D&D 5e, Daggerheart) that anyone can extend.
 - **A good MCP citizen** — tool annotations (read-only/destructive), paginated
@@ -104,7 +104,7 @@ claude mcp add foundry --transport http https://YOUR-DEPLOYMENT/mcp-<secret>
 Claude Desktop: *Settings → Connectors → Add custom connector* with the same URL
 (the secret lives in the URL because Desktop cannot send custom headers).
 
-## The 104 tools
+## The 119 tools
 
 ### Generic (66) — work with any game system
 
@@ -159,11 +159,11 @@ on documents; the `client_*` ones need the optional companion module.
 - **Annotations**: read-only tools are flagged so clients can auto-approve them;
   only the two `delete_*` tools are marked destructive.
 
-## Client-side actions (optional companion) — 11 tools
+## Client-side actions (optional companion) — 26 tools
 
 The socket protocol can only touch *documents*. To reach the browser-only client
 API, install the optional **[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**
-module. It adds these 11 `client_*` tools. Without it they simply time out with a
+module. It adds the `client_*` tools. Without it they simply time out with a
 clear message; everything else works unchanged.
 
 | Tool | What it does (client-side) |
@@ -185,6 +185,25 @@ Scene actions (`client_pan_camera`, `client_ping`, `client_play_sound`,
 (`all` / `gm` / `players` / list of user _ids). Optional integrations degrade
 gracefully: `client_roll_pool_native` needs starwarsffg, `client_play_effect`
 needs Sequencer, `client_cc_*` need Campaign Codex.
+
+### Perception, table & ambience (15 more, companion ≥ 0.4.0)
+
+The newer companion tools, grouped by what they unlock:
+
+| Category | Tool | What it does (client-side) |
+|---|---|---|
+| **Perception** | `client_get_derived` | THE reliable sheet read: the PREPARED values (after `prepareData` + active effects) — source documents often store 0 where the player sees the real stat |
+| | `client_enrich` | Enriched HTML of a document or journal pages: `@UUID` links resolved, inline rolls evaluated, GM secrets |
+| | `client_search` | Name search across every world collection via the client index (returns uuids) |
+| | `client_capture` | Screenshot of the GM's canvas view, returned as a real MCP image — the AI literally sees the table |
+| | `client_scene_report` | Playable scene state: tokens with grid coords, disposition and REAL visibility, doors open/closed, lights, templates, selection, targets |
+| | `client_babele` | [Babele](https://foundryvtt.com/packages/babele): the TRANSLATED view of a compendium as players see it (the server only reads the source language) |
+| **Table** | `client_ask` | Ask a player a question in a real dialog on THEIR screen and get their answer back |
+| | `client_select` / `client_target` | Real selection / crosshair targets on the GM's canvas — show what you're talking about |
+| | `client_fog` | Reset the explored fog of war on the active scene |
+| **Ambience** | `client_weather` / `client_weather_types` | [FXMaster](https://foundryvtt.com/packages/fxmaster): scene weather particles (rain, fog, embers, bats…) |
+| | `client_token_fx` / `client_token_fx_presets` | [Token Magic FX](https://foundryvtt.com/packages/tokenmagic): filter presets on tokens (glow, fire, shadow…) |
+| | `client_effect_catalog` | Sequencer: search the installed effect database (JB2A & co) to find a valid path before playing an effect |
 
 ## Contributing a game system
 

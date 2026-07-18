@@ -22,7 +22,7 @@ gérer vos compendiums, préparer vos séances — 24 h/24, tant que le monde to
 - **Rapide** — lectures par collection (jamais de dump complet du monde hors
   `get_world`), filtres poussés côté serveur, listings par index de base de
   données : ~7 000 journaux listés en ~0,3 s.
-- **104 outils** — CRUD générique des documents, outils MJ de séance (montrer un
+- **119 outils** — CRUD générique des documents, outils MJ de séance (montrer un
   journal aux joueurs, combats, playlists, tokens…), plus des **modules de
   systèmes de jeu** (Star Wars FFG, D&D 5e, Daggerheart) que chacun peut étendre.
 - **Bon citoyen MCP** — annotations d'outils (lecture seule/destructif),
@@ -104,7 +104,7 @@ Claude Desktop : *Paramètres → Connecteurs → Ajouter un connecteur personna
 avec la même URL (le secret vit dans l'URL car Desktop ne sait pas poser
 d'en-têtes).
 
-## Les 104 outils
+## Les 119 outils
 
 ### Génériques (66) — pour tous les systèmes de jeu
 
@@ -161,12 +161,12 @@ agissent sur les documents ; les `client_*` requièrent le module compagnon.
 - **Annotations** : les outils en lecture seule sont marqués (auto-approbables
   par les clients) ; seuls les deux `delete_*` sont marqués destructifs.
 
-## Actions côté client (module compagnon optionnel) — 11 outils
+## Actions côté client (module compagnon optionnel) — 26 outils
 
 Le protocole socket ne touche que des *documents*. Pour atteindre l'API
 navigateur, installez le module optionnel
 **[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**.
-Il ajoute ces 11 outils `client_*`. Sans lui, ils expirent avec un message clair ;
+Il ajoute les outils `client_*`. Sans lui, ils expirent avec un message clair ;
 tout le reste fonctionne à l'identique.
 
 | Outil | Ce qu'il fait (côté navigateur) |
@@ -189,6 +189,25 @@ Les actions de scène (`client_pan_camera`, `client_ping`, `client_play_sound`,
 optionnelles dégradent proprement : `client_roll_pool_native` requiert
 starwarsffg, `client_play_effect` requiert Sequencer, `client_cc_*` requièrent
 Campaign Codex.
+
+### Perception, table & ambiance (15 de plus, compagnon ≥ 0.4.0)
+
+Les outils compagnon récents, groupés par ce qu'ils débloquent :
+
+| Catégorie | Outil | Ce qu'il fait (côté navigateur) |
+|---|---|---|
+| **Perception** | `client_get_derived` | LA lecture fiable d'une fiche : les valeurs PRÉPARÉES (après `prepareData` + effets actifs) — le document source stocke souvent 0 là où le joueur voit la vraie stat |
+| | `client_enrich` | HTML enrichi d'un document ou des pages d'un journal : liens `@UUID` résolus, jets inline évalués, secrets MJ |
+| | `client_search` | Recherche par nom sur toutes les collections du monde via l'index client (renvoie les uuids) |
+| | `client_capture` | Capture de la vue du MJ, renvoyée en vraie image MCP — l'IA voit littéralement la table |
+| | `client_scene_report` | État jouable de la scène : tokens en cases, disposition et visibilité RÉELLE, portes ouvertes/fermées, lumières, gabarits, sélection, cibles |
+| | `client_babele` | [Babele](https://foundryvtt.com/packages/babele) : la vue TRADUITE d'un compendium telle que les joueurs la voient (le serveur ne lit que la langue source) |
+| **Table** | `client_ask` | Pose une question à un joueur dans un vrai dialogue sur SON écran et récupère sa réponse |
+| | `client_select` / `client_target` | Sélection / cibles réelles sur le canvas du MJ — montrer de quoi on parle |
+| | `client_fog` | Réinitialise le brouillard exploré de la scène active |
+| **Ambiance** | `client_weather` / `client_weather_types` | [FXMaster](https://foundryvtt.com/packages/fxmaster) : particules météo de scène (pluie, brouillard, braises, chauves-souris…) |
+| | `client_token_fx` / `client_token_fx_presets` | [Token Magic FX](https://foundryvtt.com/packages/tokenmagic) : préréglages de filtres sur les tokens (lueur, feu, ombre…) |
+| | `client_effect_catalog` | Sequencer : cherche dans la base d'effets installée (JB2A & co) un chemin valide avant de jouer un effet |
 
 ## Contribuer un système de jeu
 
