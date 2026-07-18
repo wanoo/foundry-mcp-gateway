@@ -73,6 +73,35 @@ clever deploy
 ```
 </details>
 
+<details>
+<summary>🐳 Lancer avec Docker</summary>
+
+```sh
+docker build -t foundry-mcp-gateway .
+docker run -d --name foundry-mcp -p 8080:8080 \
+  -e MCP_SECRET="une-longue-chaine-aleatoire" \
+  -e FOUNDRY_CREDENTIALS_JSON='[{"_id":"…","hostname":"…","userid":"…","password":"…"}]' \
+  foundry-mcp-gateway
+```
+
+Ou en compose :
+
+```yaml
+services:
+  foundry-mcp:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      MCP_SECRET: "une-longue-chaine-aleatoire"
+      FOUNDRY_CREDENTIALS_JSON: '[{"_id":"…","hostname":"…","userid":"…","password":"…"}]'
+      # FOUNDRY_ADMIN_PASSWORD: "…"
+    restart: unless-stopped
+```
+
+L'image embarque un healthcheck `/health`. Mettez du HTTPS devant (reverse
+proxy) avant de l'exposer sur internet — le secret voyage dans l'URL.
+</details>
+
 **3 · Branchez votre IA :**
 
 ```sh
@@ -187,6 +216,9 @@ si `FOUNDRY_ADMIN_PASSWORD` est défini.
 - **Prompts** — `session-recap`, `world-overview`, `prep-checklist`, pré-remplis en direct
 - **Subscriptions** — `resources/updated` poussé quand un document souscrit change
 - **Notifications SSE** — chaque broadcast Foundry relayé sur le flux
+
+Vous intégrez programmatiquement (sans IA) ? **[docs/integrators.md](docs/integrators.md)**
+documente la forme exacte des réponses — enveloppe, lectures, événements, compagnon, admin.
 
 ## 🧩 Le module compagnon
 

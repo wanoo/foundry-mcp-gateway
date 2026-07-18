@@ -72,6 +72,35 @@ clever deploy
 ```
 </details>
 
+<details>
+<summary>🐳 Run with Docker</summary>
+
+```sh
+docker build -t foundry-mcp-gateway .
+docker run -d --name foundry-mcp -p 8080:8080 \
+  -e MCP_SECRET="a-long-random-string" \
+  -e FOUNDRY_CREDENTIALS_JSON='[{"_id":"…","hostname":"…","userid":"…","password":"…"}]' \
+  foundry-mcp-gateway
+```
+
+Or with compose:
+
+```yaml
+services:
+  foundry-mcp:
+    build: .
+    ports: ["8080:8080"]
+    environment:
+      MCP_SECRET: "a-long-random-string"
+      FOUNDRY_CREDENTIALS_JSON: '[{"_id":"…","hostname":"…","userid":"…","password":"…"}]'
+      # FOUNDRY_ADMIN_PASSWORD: "…"
+    restart: unless-stopped
+```
+
+The image has a built-in `/health` healthcheck. Put HTTPS in front (reverse
+proxy) before exposing it to the internet — the secret rides in the URL.
+</details>
+
 **3 · Connect your AI:**
 
 ```sh
@@ -185,6 +214,9 @@ All modules load by default; restrict with `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
 - **Prompts** — `session-recap`, `world-overview`, `prep-checklist`, pre-filled with live data
 - **Subscriptions** — `resources/updated` pushed when a subscribed document changes
 - **SSE notifications** — every Foundry broadcast relayed on the stream
+
+Integrating programmatically (not through an AI)? **[docs/integrators.md](docs/integrators.md)**
+documents the exact response shapes — envelope, reads, events, companion, admin.
 
 ## 🧩 The companion module
 
