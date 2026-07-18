@@ -361,76 +361,112 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         }
 
         "admin_check_package" | "admin_update_package" => {
-            let password = admin_password(state)?;
             let pkg_type = str_arg(args, "type").unwrap_or_else(|| "module".into());
             let id = str_arg(args, "id").ok_or_else(|| anyhow!("'id' est requis"))?;
             let status = api_status(&url).await?;
-            if let Some(active) = status.get("world").and_then(Value::as_str) {
-                bail!(
-                    "le monde '{active}' tourne — les opérations de paquets exigent le mode setup \
-                     (admin_shutdown_world d'abord)"
-                );
-            }
-            let client = http()?;
-            admin_auth(&client, &url, password).await?;
-            let check = setup_post(
-                &client,
-                &url,
-                &json!({ "action": "checkPackage", "strict": false, "type": pkg_type, "id": id }),
-            )
-            .await?;
-            let remote_manifest = check
-                .pointer("/remote/manifest")
-                .and_then(Value::as_str)
-                .map(String::from);
-            let installed = check.pointer("/local/version").cloned();
-            let remote = check.pointer("/remote/version").cloned();
-            let update_available = matches!((&installed, &remote), (Some(a), Some(b)) if a != b);
+            let world_active = status.get("world").and_then(Value::as_str).map(String::from);
+
+            // Version installée + URL du manifest distant : lues sur le manifest
+            // STATIQUE servi par l'instance — la réponse checkPackage ne contient
+            // que le côté distant (vérifié en réel sur v13).
+            let static_manifest = match pkg_type.as_str() {
+                "module" => Some(format!("{url}/modules/{id}/module.json")),
+                "system" => Some(format!("{url}/systems/{id}/system.json")),
+                _ => None, // worlds : pas de manifest statique servi
+            };
+            let read_local = || async {
+                let p = static_manifest.as_ref()?;
+                let m: Value = reqwest::get(p).await.ok()?.json().await.ok()?;
+                Some((
+                    m.get("version").and_then(Value::as_str).map(String::from),
+                    m.get("manifest").and_then(Value::as_str).map(String::from),
+                ))
+            };
+            let (installed, manifest_url) = read_local().await.unwrap_or((None, None));
 
             if name == "admin_check_package" {
+                // Check possible même monde allumé : le manifest distant se lit
+                // directement à son URL. Monde éteint : checkPackage fait foi.
+                let remote = if world_active.is_some() {
+                    let mu = manifest_url.clone().ok_or_else(|| anyhow!(
+                        "manifest distant introuvable pour '{id}' — paquet installé ? \
+                         (sinon, éteindre le monde pour un checkPackage complet)"
+                    ))?;
+                    let m: Value = reqwest::get(&mu).await?.json().await?;
+                    m.get("version").and_then(Value::as_str).map(String::from)
+                } else {
+                    let client = http()?;
+                    admin_auth(&client, &url, admin_password(state)?).await?;
+                    let check = setup_post(&client, &url, &json!({
+                        "action": "checkPackage", "strict": false, "type": pkg_type, "id": id,
+                    }))
+                    .await?;
+                    check
+                        .pointer("/remote/version")
+                        .and_then(Value::as_str)
+                        .map(String::from)
+                };
+                let update_available =
+                    matches!((&installed, &remote), (Some(a), Some(b)) if a != b);
                 return Ok(text_response(&json!({
                     "package": id, "type": pkg_type,
                     "installed": installed, "remote": remote,
                     "updateAvailable": update_available,
                 })));
             }
-            if !update_available {
+
+            // update : mode setup obligatoire (installPackage).
+            if let Some(active) = world_active {
+                bail!(
+                    "le monde '{active}' tourne — la mise à jour exige le mode setup \
+                     (admin_shutdown_world d'abord)"
+                );
+            }
+            let client = http()?;
+            admin_auth(&client, &url, admin_password(state)?).await?;
+            let check = setup_post(&client, &url, &json!({
+                "action": "checkPackage", "strict": false, "type": pkg_type, "id": id,
+            }))
+            .await?;
+            let remote = check
+                .pointer("/remote/version")
+                .and_then(Value::as_str)
+                .map(String::from);
+            let manifest = check
+                .pointer("/remote/manifest")
+                .and_then(Value::as_str)
+                .map(String::from)
+                .or(manifest_url)
+                .ok_or_else(|| anyhow!("pas de manifest distant pour '{id}'"))?;
+            if installed.is_some() && installed == remote {
                 return Ok(text_response(&json!({
                     "package": id, "installed": installed,
-                    "updated": false, "reason": "déjà à jour (ou paquet/manifest introuvable)",
+                    "updated": false, "reason": "déjà à jour",
                 })));
             }
-            let manifest = remote_manifest
-                .ok_or_else(|| anyhow!("pas de manifest distant dans la réponse checkPackage"))?;
-            // installPackage répond vite ; la fin réelle se vérifie en re-checkant.
-            setup_post(
-                &client,
-                &url,
-                &json!({ "action": "installPackage", "type": pkg_type, "id": id, "manifest": manifest }),
-            )
+            // installPackage répond vite ; la fin réelle se vérifie sur le
+            // manifest statique (la version change quand l'extraction est finie).
+            setup_post(&client, &url, &json!({
+                "action": "installPackage", "type": pkg_type, "id": id, "manifest": manifest,
+            }))
             .await?;
             let mut verified = None;
             for _ in 0..24 {
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                if let Ok(re) = setup_post(
-                    &client,
-                    &url,
-                    &json!({ "action": "checkPackage", "strict": false, "type": pkg_type, "id": id }),
-                )
-                .await
+                if let Some((now, _)) = read_local().await
+                    && now.is_some()
+                    && now != installed
                 {
-                    let now = re.pointer("/local/version").cloned();
-                    if now.is_some() && now == remote {
-                        verified = now;
-                        break;
-                    }
+                    verified = now;
+                    break;
                 }
             }
             Ok(text_response(&json!({
                 "package": id, "type": pkg_type,
                 "from": installed, "to": remote,
+                "installedNow": verified,
                 "updated": verified.is_some(),
-                "note": if verified.is_some() { "vérifié installé" }
+                "note": if verified.is_some() { "vérifié installé (manifest statique)" }
                         else { "installation lancée mais non confirmée en 2 min — re-checker" },
             })))
         }
