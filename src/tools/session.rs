@@ -222,13 +222,29 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 .and_then(Value::as_bool)
                 .ok_or_else(|| anyhow!("'paused' is required"))?;
             let user_id = foundry.user_id().await;
+            // « pause » part sans accusé de réception : si le serveur refuse
+            // (droits insuffisants), l'émission réussit quand même. On confirme
+            // donc sur le broadcast que Foundry renvoie quand la pause prend.
+            let since = foundry.event_seq();
             foundry
                 .emit(
                     "pause",
                     &[json!(paused), json!({"broadcast": true, "userId": user_id})],
                 )
                 .await?;
-            Ok(text_response(&json!({"paused": paused})))
+            let confirmed = foundry
+                .wait_for_event(since, std::time::Duration::from_secs(3), move |e| {
+                    e.event == "pause" && e.args.first() == Some(&json!(paused))
+                })
+                .await
+                .is_some();
+            Ok(text_response(&json!({
+                "paused": paused,
+                "confirmed": confirmed,
+                "note": if confirmed { Value::Null } else {
+                    json!("aucun broadcast de confirmation en 3 s — vérifier les droits du compte du bot (pause = MJ)")
+                },
+            })))
         }
         "activate_scene" | "pull_users_to_scene" => {
             let scene = resolve_scene_by_ident(state, args).await?;

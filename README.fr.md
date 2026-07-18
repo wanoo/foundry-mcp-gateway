@@ -47,6 +47,9 @@ Il tourne 24h/24 contre votre monde, depuis n'importe quelle machine.
 
 **1 · Créez un utilisateur bot dans Foundry** — en MJ : *Configurer les joueurs →
 Créer un utilisateur*, ex. `MCP-Bot`, rôle **Gamemaster**, avec mot de passe.
+(Un rôle inférieur fonctionne — Foundry refuse proprement ce qui dépasse ses
+droits — mais écritures, combats et outils de séance échouent alors : la
+panoplie complète exige Gamemaster.)
 Puis récupérez son `_id` (16 caractères) — sans terminal :
 
 > Ouvrez `view-source:https://VOTRE-HOTE/join` dans votre navigateur (collez-le

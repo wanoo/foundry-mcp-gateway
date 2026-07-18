@@ -16,7 +16,7 @@ production, and its response shapes are now a versioned contract.
 
 ### Added
 
-- **Read-only mode** — `FOUNDRY_READONLY=1` exposes only the 48 read-only tools
+- **Read-only mode** — `FOUNDRY_READONLY=1` exposes only the 50 read-only tools
   and refuses writes at dispatch (defence in depth). Lets you plug untrusted or
   player-facing integrations into the same world.
 - **User management** — `manage_users`: list accounts, create/update/delete
@@ -46,6 +46,10 @@ production, and its response shapes are now a versioned contract.
 - **Installed version always `null`** — Foundry's `checkPackage` only returns
   the *remote* manifest, so updates believed everything was up to date. The
   installed version is now read from the package's static manifest.
+- **`toggle_pause` reported success blindly** — the `pause` event carries no ack,
+  so a refusal (insufficient rights) still looked like success. It now waits for
+  Foundry's confirming broadcast and returns `confirmed`. Found by testing a
+  restricted-role bot.
 - **`manage_modules` was annotated read-only** although it writes
   `core.moduleConfiguration` — clients could auto-approve it.
 

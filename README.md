@@ -46,7 +46,9 @@ against your world, from any machine — or free-tier cloud hosting.
 - about 10 minutes.
 
 **1 · Create a bot user in Foundry** — as GM: *Configure Players → Create Additional
-User*, e.g. `MCP-Bot`, role **Gamemaster**, with a password. Then grab its 16-char
+User*, e.g. `MCP-Bot`, role **Gamemaster**, with a password. (A lower role works
+and is safely refused by Foundry for anything it lacks rights for — but writes,
+combat and session tools then fail, so the full toolset needs Gamemaster.) Then grab its 16-char
 `_id` — no terminal needed:
 
 > Open `view-source:https://YOUR-HOST/join` in your browser (paste it in the
