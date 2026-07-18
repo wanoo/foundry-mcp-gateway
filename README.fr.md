@@ -1,82 +1,68 @@
-# foundry-mcp-gateway
+<div align="center">
 
-**🇬🇧 [English version](README.md)**
+# 🎲 foundry-mcp-gateway
 
-Un serveur **MCP** (Model Context Protocol) **indépendant** pour **Foundry VTT**,
-écrit en Rust. Un seul binaire qui se connecte à votre monde Foundry **comme un
-joueur ordinaire** (client socket natif — aucun module à installer dans Foundry,
-aucun navigateur à laisser ouvert) et l'expose à n'importe quel client MCP :
-Claude Code, Claude Desktop, ou tout ce qui parle MCP en HTTP streamable.
+**Donnez une place à votre assistant IA autour de la table.**
 
-Laissez votre assistant IA lire vos journaux, lancer les dés, mener les combats,
-gérer vos compendiums, préparer vos séances — 24 h/24, tant que le monde tourne.
+Un serveur [MCP](https://modelcontextprotocol.io) indépendant pour [Foundry VTT](https://foundryvtt.com) —
+un petit binaire Rust qui se connecte à votre monde *comme un joueur* et offre à votre IA
+**126 outils** pour préparer, animer et mettre en scène vos parties.
 
-## Points forts
+[![Rust](https://img.shields.io/badge/Rust-un%20seul%20binaire-orange?logo=rust)](https://www.rust-lang.org)
+[![Foundry](https://img.shields.io/badge/Foundry%20VTT-v13%20%7C%20v14-ff6400)](https://foundryvtt.com)
+[![MCP](https://img.shields.io/badge/MCP-2025--03--26-blue)](https://modelcontextprotocol.io)
+[![Licence : MIT](https://img.shields.io/badge/Licence-MIT-green.svg)](LICENSE)
 
-- **Zéro empreinte sur Foundry** — le serveur parle le même protocole socket que
-  le client officiel. Compatible Foundry **v13 et v14** (binding de session
-  auto-détecté), y compris les instances servies sous un préfixe de route
-  (`mon-hote.fr/mon-monde`).
-- **Un petit binaire unique** — Rust, quelques Mo de RAM. À l'aise sur les plus
-  petites instances cloud.
-- **Rapide** — lectures par collection (jamais de dump complet du monde hors
-  `get_world`), filtres poussés côté serveur, listings par index de base de
-  données : ~7 000 journaux listés en ~0,3 s.
-- **126 outils** — CRUD générique des documents, outils MJ de séance (montrer un
-  journal aux joueurs, combats, playlists, tokens…), plus des **modules de
-  systèmes de jeu** (Star Wars FFG, D&D 5e, Daggerheart) que chacun peut étendre.
-- **Bon citoyen MCP** — annotations d'outils (lecture seule/destructif),
-  resources paginées, prompts, souscriptions, notifications SSE.
-- **Auto-réparant** — reconnexion infinie avec backoff ; survit aux redémarrages
-  du monde et même à une migration serveur v13→v14 en vol.
+**🇬🇧 [English version](README.md)** · [Démarrage rapide](#-démarrage-rapide) · [Que peut-il faire ?](#-ce-que-votre-ia-peut-faire-à-votre-table) · [Comment c'est fait](#%EF%B8%8F-comment-cest-fait) · [Contribuer](#-contribuer)
 
-## Installation (pas à pas, sans magie noire)
+</div>
 
-### 1. Créer un utilisateur Foundry dédié au bot
+---
 
-Dans Foundry, en MJ : **Configuration des joueurs → Créer un utilisateur**.
-Nommez-le p. ex. `MCP-Bot`, donnez-lui le rôle **Gamemaster** (ou moins pour un
-bot restreint) et un **mot de passe**.
+## ✨ Pourquoi ?
 
-Il vous faut ensuite l'**`_id` de 16 caractères** de cet utilisateur — le plus
-simple une fois le serveur lancé est l'outil `get_users`, mais pour la première
-installation :
+Vous passez des heures à préparer vos séances : journaux, PNJ, scènes, compendiums.
+Votre assistant IA connaît déjà votre campagne — ce serveur lui permet d'**agir** dessus :
+
+> *« Résume ce que le groupe a appris sur Toydaria, puis prépare trois rumeurs pour
+> la scène du marché — en articles de journal dans le dossier Acte VI. »*
+>
+> *« Lance Perception pour Pahas'Tis, en caché. »*
+>
+> *« Fais pleuvoir sur cette scène, assombris l'ambiance, et joue un sting quand la
+> porte s'ouvre. »*
+
+Aucun module requis dans Foundry pour commencer. Aucun navigateur à garder ouvert.
+Il tourne 24h/24 contre votre monde, depuis n'importe quelle machine.
+
+## 🚀 Démarrage rapide
+
+**1 · Créez un utilisateur bot dans Foundry** — en MJ : *Configurer les joueurs →
+Créer un utilisateur*, ex. `MCP-Bot`, rôle **Gamemaster**, avec mot de passe.
+Récupérez son `_id` (16 caractères) :
 
 ```sh
 curl -s https://VOTRE-HOTE/join | grep -o '{"name":"MCP-Bot"[^}]*'
 # → ..."_id":"AbCdEfGh12345678"...
 ```
 
-### 2. Configurer les trois variables d'environnement
+**2 · Configurez et lancez le serveur** (n'importe où, derrière HTTPS) :
 
 ```sh
-# Le secret qui protège votre endpoint (chemin d'URL : /mcp-<secret>)
-export MCP_SECRET="une-longue-chaine-aleatoire"
-
-# Qui se connecte, où. hostname PEUT inclure un préfixe de route.
+export MCP_SECRET="une-longue-chaine-aleatoire"    # votre endpoint : /mcp-<secret>
 export FOUNDRY_CREDENTIALS_JSON='[{
   "_id": "mon-monde",
-  "hostname": "mon-hote.fr/mon-monde",
+  "hostname": "mon-hote.com/mon-monde",            # préfixe de route supporté
   "userid": "AbCdEfGh12345678",
-  "password": "le-mot-de-passe-du-bot"
+  "password": "le-mdp-du-bot"
 }]'
+export FOUNDRY_ADMIN_PASSWORD="…"                  # optionnel : débloque les admin_*
 
-# Optionnel (défaut 8080)
-export PORT=8080
+cargo run --release                                 # binaire : target/release/foundry-mcp
 ```
 
-Plusieurs mondes/instances ? Mettez plusieurs objets dans le tableau et basculez
-à chaud avec l'outil `choose_foundry_instance`.
-
-### 3. Lancer le serveur
-
-**En local / sur tout serveur avec Rust :**
-
-```sh
-cargo run --release        # binaire : target/release/foundry-mcp
-```
-
-**Clever Cloud (5 commandes) :**
+<details>
+<summary>☁️ Déployer sur Clever Cloud (5 commandes)</summary>
 
 ```sh
 clever create --type rust foundry-mcp-gateway
@@ -85,164 +71,180 @@ clever env set FOUNDRY_CREDENTIALS_JSON '[{"_id":"…","hostname":"…","userid"
 clever env set CC_RUST_BIN foundry-mcp
 clever deploy
 ```
+</details>
 
-**Ailleurs :** compilez une fois (`cargo build --release`), copiez l'unique
-binaire `foundry-mcp`, posez les variables d'env, servez derrière HTTPS.
-
-Vérifiez : `curl https://VOTRE-DEPLOIEMENT/health` → `ok`.
-Le monde doit être **lancé** (page de connexion visible) pour que le bot se
-connecte ; s'il est éteint, le serveur attend et se reconnecte tout seul.
-
-### 4. Brancher votre client MCP
+**3 · Branchez votre IA :**
 
 ```sh
-# Claude Code
 claude mcp add foundry --transport http https://VOTRE-DEPLOIEMENT/mcp-<secret>
 ```
 
-Claude Desktop : *Paramètres → Connecteurs → Ajouter un connecteur personnalisé*
-avec la même URL (le secret vit dans l'URL car Desktop ne sait pas poser
-d'en-têtes).
+Claude Desktop : *Réglages → Connecteurs → Connecteur personnalisé*, même URL.
+Vérification : `curl https://VOTRE-DEPLOIEMENT/health` → `ok`. Plusieurs mondes ?
+Plusieurs objets dans le tableau, bascule via `choose_foundry_instance`.
 
-## Les 126 outils
+**4 · (Recommandé) installez le module compagnon** — voir [plus bas](#-le-module-compagnon).
 
-### Génériques (66) — pour tous les systèmes de jeu
+## 🧙 Ce que votre IA peut faire à votre table
 
-| Catégorie | Outils | Notes |
-|---|---|---|
-| **Lecture** | `get_actors`/`get_actor`, `get_items`/`get_item`, `get_journals`/`get_journal`, `get_scenes`/`get_scene`, `get_folders`, `get_users`, `get_macros`, `get_cards`, `get_playlists`, `get_tables`, `get_combats`, `get_messages`, `get_settings` (+ formes singulières) | filtres `where` à chemins pointés et opérateurs (`__in`, `__contains`, `__ne`, `__exists`), projection de champs, `offset`/`limit`/`max_length`, index BDD automatique pour les listings légers |
-| **Écriture** | `create_document`, `modify_document`, `delete_document` | documents imbriqués via `parent_uuid`, compendiums via `pack`, `keep_id` |
-| **Compendiums** | `list_compendium_packs`, `get_pack_documents`, `import_from_compendium`, `create_compendium`, `delete_compendium` | l'index BDD sert aussi aux packs |
-| **Fichiers** | `browse_files`, `create_directory`, `upload_file` (URL ou base64) | |
-| **Séance (MJ)** | `show_journal_to_players`, `share_image`, `toggle_pause`, `activate_scene`, `get_current_scene`, `pull_users_to_scene`, `list_tokens`, `place_token`, `move_token`, `update_token`, `toggle_actor_condition` (27 statuts core), `manage_combat` (création/initiative/tours/statut/fin), `control_playlist`, `draw_from_table` (tables d100 de critiques & co) | |
-| **Addons famille CC** | Campaign Codex, Asset Librarian, Mini Calendar — voir la section dédiée ci-dessous | suite [wgtnGM](https://campaigncodex.wgtngm.com/) |
-| **Événements** | `get_events` (polling incrémental), `wait_for_message` (attente bloquante d'un message d'un autre client) | |
-| **Divers** | `ping` (santé, léger), `get_world`, `search_journals` (plein-texte), `export_journals` (Markdown), `set_setting`, `list_actor_ownership`, `set_actor_ownership`, `show_credentials`, `choose_foundry_instance` | |
+126 outils, organisés comme travaille un MJ. Les outils en lecture seule sont
+annotés (auto-approbables par votre client MCP) ; seules les suppressions sont
+marquées destructives.
 
-### Modules de systèmes de jeu (12)
+### 📖 Préparer — construire et interroger votre monde
+
+| Outils | Pour quoi |
+|---|---|
+| `get_actors` `get_items` `get_journals` `get_scenes` `get_tables` `get_macros` `get_playlists` `get_cards` `get_combats` `get_messages` `get_folders` `get_users` `get_settings` (+ formes singulières) | Lire **toutes** les collections — filtres à chemins pointés et opérateurs (`__in`, `__contains`, `__ne`, `__exists`), projection, pagination. ~7 000 journaux listés en ~0,3 s |
+| `search_journals` · `export_journals` | Recherche plein texte · export Markdown de tout votre lore |
+| `create_document` `modify_document` `delete_document` | Tout écrire : journaux, acteurs, scènes… docs imbriqués via `parent_uuid`, compendiums via `pack` |
+| `list_compendium_packs` `get_pack_documents` `import_from_compendium` `create_compendium` `delete_compendium` | Le cycle compendium complet |
+| `browse_files` `create_directory` `upload_file` | Fichiers — uploadez cartes et illustrations par URL ou base64 |
+| `get_world` `ping` `get_setting` `set_setting` `show_credentials` `choose_foundry_instance` | Métadonnées, santé, réglages, multi-mondes |
+
+### 🎬 Animer — la télécommande du MJ
+
+| Outils | Pour quoi |
+|---|---|
+| `show_journal_to_players` · `share_image` | « Regardez tous ça » — handouts, révélations |
+| `activate_scene` `get_current_scene` `pull_users_to_scene` | Changer de scène, y entraîner le groupe |
+| `list_tokens` `place_token` `move_token` `update_token` | Les tokens de la scène vivante |
+| `toggle_actor_condition` (27 statuts) · `apply_critical_injury` | Conditions et critiques |
+| `manage_combat` (création / initiative / tours / fin) · `get_combat` | Tout le cycle du combat |
+| `control_playlist` · `draw_from_table` | Musique · tirages sur vos tables d100 |
+| `toggle_pause` · `wait_for_message` · `get_events` | Pause · attendre la réponse chat d'un joueur · flux d'événements en direct |
+| `list_actor_ownership` `set_actor_ownership` · `grant_xp` | Permissions et récompenses |
+
+### 👁️ Percevoir — l'IA *voit* votre table *(compagnon)*
+
+| Outil | Pour quoi |
+|---|---|
+| 📸 `client_capture` | Capture de la vue MJ, renvoyée en vraie image — l'IA voit littéralement la carte |
+| 🗺️ `client_scene_report` | La scène lisible par machine : tokens en cases, disposition, visibilité **réelle**, portes, lumières, gabarits |
+| 📊 `client_get_derived` | Les valeurs **préparées** d'une fiche (post-`prepareData` + effets actifs) — la source stocke souvent 0 là où le joueur voit la vraie stat |
+| 🔗 `client_enrich` | HTML enrichi : liens `@UUID` résolus, jets inline évalués, secrets MJ |
+| 🔎 `client_search` | Recherche par nom sur toutes les collections via l'index client |
+| 🌍 `client_babele` | Traductions [Babele](https://foundryvtt.com/packages/babele) : recherche inverse par nom **affiché** (retrouver « Force Lightning » depuis « Éclair de Force »), index et documents traduits |
+
+### 🗣️ Interagir — un dialogue avec vos joueurs *(compagnon)*
+
+| Outil | Pour quoi |
+|---|---|
+| ❓ `client_ask` | Poser une question dans un vrai dialogue **sur l'écran d'un joueur** et récupérer sa réponse |
+| 📣 `client_notify` · 🔔 `client_ping` · 🎥 `client_pan_camera` | Notifications, pings de carte, mouvements de caméra « regardez ici » — tous ciblables (`gm` / `players` / ids) |
+| 📜 `client_show_document` | Ouvrir une fiche chez les clients ciblés |
+| 🎯 `client_select` / `client_target` · 🌫️ `client_fog` | Sélection et cibles réelles · réinitialiser le brouillard exploré |
+| 📡 `client_get_state` · `client_status` | Qui est connecté, qui regarde quoi · santé du compagnon et dépendances détectées |
+| 🚀 `client_run_macro` · `client_run_script` | Toute macro (le passe-partout) · JS arbitraire (**désactivé par défaut**, opt-in MJ) |
+
+### 🌦️ Ambiance — la mise en scène *(compagnon)*
+
+| Outil | Pour quoi |
+|---|---|
+| 🌧️ `client_weather` / `client_weather_types` | Particules [FXMaster](https://foundryvtt.com/packages/fxmaster) : pluie, brouillard, braises, neige, chauves-souris… |
+| ✨ `client_play_effect` · `client_seq_between` · `client_seq_sound` | Effets [Sequencer](https://foundryvtt.com/packages/sequencer) sur un point, **entre deux tokens** (projectiles !), sons |
+| 🎇 `client_token_fx` / `client_token_fx_presets` | [Token Magic FX](https://foundryvtt.com/packages/tokenmagic) : lueur, feu, ombre… 70 préréglages |
+| 🗂️ `client_effect_catalog` | Chercher dans la base d'effets installée (JB2A & co) un chemin valide |
+| 🔊 `client_play_sound` | Un sting sonore ponctuel, sans playlist |
+| 🎞️ `mat_list` · `client_mat_trigger` | [Monk's Active Tiles](https://foundryvtt.com/packages/monks-active-tiles) : lister et déclencher les tuiles-actions |
+
+### 🎲 Dés et systèmes de jeu
+
+La logique spécifique vit dans des modules enfichables ([ajoutez le vôtre !](#-contribuer)) :
 
 | Système | Outils |
 |---|---|
-| **Star Wars FFG** (`starwarsffg`) | `roll_actor_skill` (le vrai pool de dés **dérivé de la fiche** — valeurs stockées + mods d'espèce/équipement/talents appris), `roll_ffg_pool` (dés narratifs côté serveur, faces officielles), `request_player_roll` (bouton de chat qui ouvre le dialogue de jet pré-rempli), `adjust_actor_stats` (blessures/stress/crédits/XP/obligation/devoir/moralité + coque/surcharge des véhicules), `adjust_destiny` (points de Destinée), `grant_xp`, `apply_critical_injury` (+10 par blessure existante, attache l'item du compendium) |
-| **D&D 5e** (`dnd5e`) | `dnd5e_roll_check` (carac/compétence/sauvegarde, modificateurs dérivés de la fiche, avantage/désavantage, DD, 20/1 naturels), `dnd5e_adjust_stats` (pv plafonnés au max, pv temporaires, xp, épuisement, monnaies) |
-| **Daggerheart** (`daggerheart`) | `dh_roll_duality` (2d12 Espoir/Peur, doubles = critique, ±d6 d'avantage), `dh_roll_actor_trait`, `dh_adjust_stats` (points de vie/stress/espoir, bornés) |
+| **Star Wars FFG** | `roll_actor_skill` (pool **dérivé de la fiche** : espèce, talents, équipement), `roll_ffg_pool`, `request_player_roll` (bouton de chat qui ouvre le dialogue du joueur), `adjust_actor_stats`, `adjust_destiny`, `grant_xp`, `apply_critical_injury` · compagnon : `client_roll_pool_native` (**vrai moteur FFG + dés 3D Dice So Nice**) |
+| **D&D 5e** | `dnd5e_roll_check` (modificateurs dérivés de la fiche, avantage, DD, 20/1 naturels), `dnd5e_adjust_stats` |
+| **Daggerheart** | `dh_roll_duality` (2d12 Espoir/Peur), `dh_roll_actor_trait`, `dh_adjust_stats` |
 
-Tous les modules sont chargés par défaut ; restreignez avec
-`FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
+Tous chargés par défaut ; restreignez avec `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
 
-### Administration (7) — le plan /setup
-
-`manage_modules` et `admin_edit_world` marchent toujours (session de jeu). Les
-autres `admin_*` n'apparaissent que si `FOUNDRY_ADMIN_PASSWORD` est défini dans
-l'environnement du serveur — ils parlent à l'interface setup de Foundry.
-
-| Outil | Ce qu'il fait |
-|---|---|
-| `admin_status` | `/api/status` — marche même monde éteint ; dit si le mot de passe admin est configuré |
-| `admin_edit_world` | Modifie titre / description / image de fond / date de prochaine session, monde allumé |
-| `manage_modules` | Liste installés vs activés (avec versions), active/désactive (les clients doivent recharger) |
-| `admin_shutdown_world` | Éteint le monde (déconnecte tout le monde, bot compris — il se reconnecte au relancement) ; `confirm:true` requis |
-| `admin_launch_world` | Lance un monde depuis le mode setup (par défaut : le dernier actif) |
-| `admin_check_package` | Une mise à jour existe-t-elle pour un module/système/monde ? (mode setup) |
-| `admin_update_package` | Met à jour un module/système/monde : check → install → vérification (mode setup, refuse si un monde tourne) |
-
-### Addons famille CC — la suite [wgtnGM](https://campaigncodex.wgtngm.com/)
-
-Outils regroupés pour la famille de modules Campaign Codex. Les outils serveur
-agissent sur les documents ; les `client_*` requièrent le module compagnon.
+### 🗃️ Gestion de campagne — la suite [wgtnGM](https://campaigncodex.wgtngm.com/)
 
 | Addon | Outils |
 |---|---|
-| **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** | `cc_list_sheets`, `cc_get_sheet`, `cc_create_sheet`, `cc_link` (bidirectionnel) · compagnon : `client_cc_convert` (journal → fiche CC, migration en masse), `client_cc_export_obsidian`, `client_cc_open_toc` |
-| **Asset Librarian** | `al_tag` / `al_find` (lire & écrire les tags `flags.asset-librarian` sur les documents) · compagnon : `client_al_open` (navigateur d'assets filtré) |
-| **Mini Calendar** | `mc_get_time` / `mc_set_time` (temps du monde via `core.time`), `mc_list_notes` (journaux de notes du calendrier) · compagnon : `client_mc_set_time` (dont dawn/dusk), `client_mc_open` |
+| **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** | `cc_list_sheets` `cc_get_sheet` `cc_create_sheet` `cc_link` · compagnon : `client_cc_convert` (migration journal→fiche en masse), `client_cc_export_obsidian`, `client_cc_open_toc` |
+| **Asset Librarian** | `al_tag` / `al_find` · compagnon : `client_al_open` |
+| **Mini Calendar** | `mc_get_time` / `mc_set_time` / `mc_list_notes` · compagnon : `client_mc_set_time` (aube/crépuscule), `client_mc_open` |
 
-### Autres intégrations d'addons
+### 🛠️ Administration — le monde lui-même
 
-| Addon | Outils |
+`manage_modules` et `admin_edit_world` marchent toujours. Le reste n'apparaît que
+si `FOUNDRY_ADMIN_PASSWORD` est défini.
+
+| Outil | Pour quoi |
 |---|---|
-| **[Monk's Active Tile Triggers](https://foundryvtt.com/packages/monks-active-tiles)** | `mat_list` (tuiles-actions d'une scène) · compagnon : `client_mat_trigger` (déclenche la chaîne d'actions — téléport, changement de scène, macros…) |
-| **[Sequencer](https://foundryvtt.com/packages/sequencer)** | compagnon : `client_play_effect` (sur un token/point), `client_seq_between` (effet d'un token vers un autre — attaques/projectiles), `client_seq_sound` |
+| 🩺 `admin_status` | `/api/status` — marche même monde éteint |
+| ✏️ `admin_edit_world` | Titre, description, image de fond, prochaine session — monde allumé |
+| 🧩 `manage_modules` | Installés vs activés (avec versions) · activer/désactiver |
+| ⏻ `admin_shutdown_world` / `admin_launch_world` | Éteindre et lancer des mondes (le bot se reconnecte seul) |
+| ⬆️ `admin_check_package` / `admin_update_package` | Mettre à jour modules, **systèmes**, mondes — check → install → vérification, refuse si un monde tourne |
 
-### Capacités MCP au-delà des outils
+### 🧠 Au-delà des outils — le MCP natif
 
-- **Resources** : parcourez les acteurs (JSON) et journaux (HTML, données
-  Campaign Codex jointes) avec pagination par curseurs — épinglez-les dans le
-  contexte de votre client.
-- **Prompts** : `session-recap`, `world-overview`, `prep-checklist` — des
-  gabarits MJ remplis avec l'état live du monde.
-- **Souscriptions & notifications** : souscrivez à l'URI d'un document et
-  recevez `resources/updated` ; chaque broadcast Foundry est relayé en
-  notification de logging sur le flux SSE.
-- **Annotations** : les outils en lecture seule sont marqués (auto-approbables
-  par les clients) ; seuls les deux `delete_*` sont marqués destructifs.
+- **Resources** — acteurs et journaux navigables avec pagination par curseur
+- **Prompts** — `session-recap`, `world-overview`, `prep-checklist`, pré-remplis en direct
+- **Subscriptions** — `resources/updated` poussé quand un document souscrit change
+- **Notifications SSE** — chaque broadcast Foundry relayé sur le flux
 
-## Actions côté client (module compagnon optionnel) — 26 outils
+## 🧩 Le module compagnon
 
-Le protocole socket ne touche que des *documents*. Pour atteindre l'API
-navigateur, installez le module optionnel
-**[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**.
-Il ajoute les outils `client_*`. Sans lui, ils expirent avec un message clair ;
-tout le reste fonctionne à l'identique.
+Le protocole socket n'atteint que des *documents*. Tout ce qui est marqué
+*(compagnon)* ci-dessus demande
+**[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)** —
+un petit module Foundry dans le navigateur du MJ, qui exécute ce que le serveur lui
+délègue : 35 handlers derrière les outils `client_*`.
 
-| Outil | Ce qu'il fait (côté navigateur) |
-|---|---|
-| `client_status` | Le compagnon est-il installé/actif ? Renvoie sa version, le MJ qui répond, et quelles dépendances optionnelles (Dice So Nice, Campaign Codex, Sequencer) sont disponibles |
-| `client_run_macro` | Exécute n'importe quelle macro Foundry (par _id ou nom) sur le client MJ (renvoie sa valeur) — le passe-partout vers tout ce qui est scriptable |
-| `client_run_script` | Exécute du JS async arbitraire sur le client MJ (⚠️ désactivé par défaut ; le MJ doit l'activer dans les réglages du module) |
-| `client_roll_pool_native` | *starwarsffg* : lance un pool avec le vrai moteur FFG — carte de chat native + dés 3D **Dice So Nice** sur la table |
-| `client_pan_camera` | Déplace/zoome la caméra des clients ciblés — « regardez tous ici » (x/y ou un _id de token) |
-| `client_ping` | Ping un point de la carte pour les clients ciblés |
-| `client_play_sound` | Son ponctuel (un *stinger* dramatique) sur les clients ciblés, sans playlist |
-| `client_notify` | Notification UI (info/warn/error) sur les clients ciblés |
-| `client_show_document` | Ouvre une fiche (par uuid) sur les clients ciblés |
-| `client_play_effect` | Un effet visuel [Sequencer](https://foundryvtt.com/packages/sequencer) sur un token ou un point (si installé) |
-| `client_get_state` | Télémétrie : utilisateurs actifs, scène affichée et personnage de chacun. Les sélections/cibles en direct arrivent via `get_events` |
+- Optionnel : sans lui, les `client_*` expirent avec un message clair ; tout le reste marche.
+- Installation : *Modules → Installer → URL du manifest* :
+  `https://github.com/wanoo/foundry-mcp-gateway-companion/releases/latest/download/module.json`
+- Sûr par défaut : `client_run_script` (JS arbitraire) est **désactivé** tant que le MJ ne l'active pas.
+- Dégradation propre : chaque intégration ne s'active que si son module est présent
+  (Dice So Nice, Sequencer, FXMaster, Token Magic, Campaign Codex, Babele…).
 
-Les actions de scène (`client_pan_camera`, `client_ping`, `client_play_sound`,
-`client_notify`, `client_show_document`) acceptent un argument `targets`
-(`all` / `gm` / `players` / liste d'_id d'utilisateurs). Les intégrations
-optionnelles dégradent proprement : `client_roll_pool_native` requiert
-starwarsffg, `client_play_effect` requiert Sequencer, `client_cc_*` requièrent
-Campaign Codex.
+## 🏗️ Comment c'est fait
 
-### Perception, table & ambiance (15 de plus, compagnon ≥ 0.4.0)
+```mermaid
+flowchart LR
+    A["🤖 Assistant IA<br/>(Claude Code, Desktop, tout client MCP)"]
+    B["🦀 foundry-mcp-gateway<br/>un binaire Rust"]
+    C["🎲 Serveur Foundry VTT"]
+    D["🧩 Module compagnon<br/>(navigateur du MJ)"]
+    A <-- "MCP · HTTP streamable<br/>POST + SSE" --> B
+    B <-- "client socket natif<br/>(connecté comme un joueur)" --> C
+    C <-- "canal socket du module" --> D
+```
 
-Les outils compagnon récents, groupés par ce qu'ils débloquent :
+- **Ni SDK ni wrapper** — la spec MCP (2025-03-26) et le protocole Engine.IO/Socket.IO
+  de Foundry sont implémentés directement : handshake, ping-pong, corrélation des
+  acks, buffer de broadcasts.
+- **v13 et v14** — le binding de session (query vs cookie) est auto-détecté via
+  `/api/status` ; préfixes de route (`hote.com/mon-monde`) supportés.
+- **Rapide** — lectures par collection avec pushdown des requêtes côté serveur et
+  listings sur index BDD ; jamais de dump complet (hors `get_world`).
+- **Auto-réparant** — reconnexion infinie à backoff ; survit aux redémarrages du
+  monde et même à une migration v13→v14 en vol.
+- **Protocole compagnon** — trois modes de livraison : *scène* (tous les clients
+  ciblés exécutent), *adressé* (le client ciblé répond — `client_ask`), *unique*
+  (un seul MJ répondeur élu).
+- **Chaque intégration est vérifiée contre un monde réel** avant d'être livrée —
+  les chemins de données changent entre versions, et deviner, c'est mentir.
 
-| Catégorie | Outil | Ce qu'il fait (côté navigateur) |
-|---|---|---|
-| **Perception** | `client_get_derived` | LA lecture fiable d'une fiche : les valeurs PRÉPARÉES (après `prepareData` + effets actifs) — le document source stocke souvent 0 là où le joueur voit la vraie stat |
-| | `client_enrich` | HTML enrichi d'un document ou des pages d'un journal : liens `@UUID` résolus, jets inline évalués, secrets MJ |
-| | `client_search` | Recherche par nom sur toutes les collections du monde via l'index client (renvoie les uuids) |
-| | `client_capture` | Capture de la vue du MJ, renvoyée en vraie image MCP — l'IA voit littéralement la table |
-| | `client_scene_report` | État jouable de la scène : tokens en cases, disposition et visibilité RÉELLE, portes ouvertes/fermées, lumières, gabarits, sélection, cibles |
-| | `client_babele` | [Babele](https://foundryvtt.com/packages/babele) : la vue TRADUITE des compendiums — recherche inverse par nom affiché OU source (retrouver « Force Lightning » depuis « Éclair de Force »), index traduit, document(s) traduit(s) |
-| **Table** | `client_ask` | Pose une question à un joueur dans un vrai dialogue sur SON écran et récupère sa réponse |
-| | `client_select` / `client_target` | Sélection / cibles réelles sur le canvas du MJ — montrer de quoi on parle |
-| | `client_fog` | Réinitialise le brouillard exploré de la scène active |
-| **Ambiance** | `client_weather` / `client_weather_types` | [FXMaster](https://foundryvtt.com/packages/fxmaster) : particules météo de scène (pluie, brouillard, braises, chauves-souris…) |
-| | `client_token_fx` / `client_token_fx_presets` | [Token Magic FX](https://foundryvtt.com/packages/tokenmagic) : préréglages de filtres sur les tokens (lueur, feu, ombre…) |
-| | `client_effect_catalog` | Sequencer : cherche dans la base d'effets installée (JB2A & co) un chemin valide avant de jouer un effet |
+## 🤝 Contribuer
 
-## Contribuer un système de jeu
+Le cœur est 100 % agnostique — tout le spécifique jeu ou addon est un plugin.
+**[CONTRIBUTING.md](CONTRIBUTING.md)** détaille les deux points d'extension :
 
-Le cœur est 100 % agnostique ; tout le spécifique vit dans `src/systems/`, un
-fichier par système. Pour ajouter le vôtre :
+- **🎮 Un système de jeu** (`src/systems/<id>.rs`) : trois fonctions
+  (`definitions`, `handles`, `run`), moteurs de dés à RNG injectable pour des tests
+  déterministes. `swffg.rs` est la référence — y compris un moteur de dérivation de fiches.
+- **🧩 Une intégration d'addon** : outil serveur (`src/tools/`) + handler compagnon
+  (`scripts/addons/*.mjs`) qui parlent un petit protocole de commandes.
 
-1. Créez `src/systems/<id_systeme>.rs` avec trois fonctions : `definitions()`
-   (triplets nom/description/schéma JSON — préfixez les noms d'outils par l'id
-   du système), `handles(name)` et `async run(state, name, args)`.
-2. Enregistrez-le dans `src/systems/mod.rs` (`all_modules()`).
-3. **Vérifiez vos chemins de données sur un monde réel** avant de les figer
-   (les structures varient entre versions de système — notez la version
-   validée). Les moteurs de dés prennent une closure `rng` injectable pour des
-   tests déterministes.
-4. `cargo test` + ouvrez une PR. Guide complet dans `src/systems/README.md` ;
-   `swffg.rs` est l'implémentation de référence (y compris un moteur de
-   dérivation de fiche pour les systèmes dont les documents source ne stockent
-   pas les valeurs affichées).
+Règle d'or dans les deux cas : **vérifiez vos chemins de données sur un monde réel**
+et dites quelle version vous avez validée. `cargo test` doit rester vert.
 
-## Licence
+## 📜 Licence
 
-MIT.
+[MIT](LICENSE). Sans affiliation avec Foundry Gaming LLC.

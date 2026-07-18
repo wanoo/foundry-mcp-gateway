@@ -1,0 +1,89 @@
+# Contributing to foundry-mcp-gateway
+
+Two extension points cover almost everything: **game systems** and **addon
+integrations**. Both are plugins — the core never needs touching.
+
+*(🇫🇷 : les contributions sont bienvenues en français — code et docs ; les
+descriptions d'outils restent en anglais, c'est ce que lisent les modèles.)*
+
+## Dev setup
+
+```sh
+git clone https://github.com/wanoo/foundry-mcp-gateway && cd foundry-mcp-gateway
+cargo test                       # 22 unit tests, no Foundry needed
+
+# run against YOUR world (create a bot user first — see README):
+MCP_SECRET=test PORT=8940 \
+FOUNDRY_CREDENTIALS_JSON='[{"_id":"dev","hostname":"…","userid":"…","password":"…"}]' \
+cargo run
+# then: claude mcp add foundry-dev --transport http http://localhost:8940/mcp-test
+```
+
+## 🎮 Adding a game system
+
+Everything about a system lives in **one file**: `src/systems/<system_id>.rs`
+(use the exact Foundry system id, e.g. `pf2e`).
+
+```rust
+pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+    vec![("pf2e_roll_check", "Roll a check … ", json!({ /* JSON-schema */ }))]
+}
+pub fn handles(name: &str) -> bool { name.starts_with("pf2e_") }
+pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> { … }
+```
+
+1. **Prefix every tool name** with your system id.
+2. Register the module in `src/systems/mod.rs` (`all_modules()`).
+3. **Dice engines take an injectable RNG closure** so unit tests are
+   deterministic — see `swffg_dice.rs`.
+4. If your system's *stored* documents differ from what players *see*
+   (stats at 0, modifiers in items/talents), either derive server-side
+   (see `swffg_derived.rs`, the reference implementation) or lean on the
+   companion's `client_get_derived`, which works for every system.
+5. `src/systems/README.md` has the full walkthrough.
+
+## 🧩 Adding an addon integration
+
+Ask first: **does this need a browser?** If the addon's data lives in documents
+(flags, settings, journal content), a plain server-side tool in `src/tools/`
+is enough — no companion code. Tagger and status counters needed nothing but
+`where` filters on flags, for instance.
+
+If it needs the addon's client API, you write a **pair**:
+
+| Side | File | What |
+|---|---|---|
+| Server (Rust) | `src/tools/<theme>.rs` | Tool definition + `call_companion(state, "cmd", args, targets, timeout)` |
+| Companion (JS) | `scripts/addons/<theme>.mjs` in [the companion repo](https://github.com/wanoo/foundry-mcp-gateway-companion) | `export const X_HANDLERS = { async cmd(args) { … } }`, merged in `main.mjs` |
+
+**Pick the command's delivery category** (in the companion's `main.mjs`):
+
+- **scene** — every targeted client runs it, one ack (notifications, camera, sounds);
+- **addressed** — the *targeted* client runs it **and answers** (`client_ask`);
+- **unique** — only the elected GM responder runs it (default: API calls, rolls).
+
+Rules of the road:
+
+- Degrade gracefully: `if (!game.modules.get("x")?.active) throw new Error("x module not active")`.
+- **Probe the addon's real API in a live world before writing** (`client_run_script`
+  is perfect for this). We dropped FXMaster's scene filters because v13 exposes no
+  hook for them — better no tool than a guessed one.
+- Names: `<addon>_*` for server-side tools, `client_<addon>_*` for delegated ones.
+- Read-only tools: add them to the `annotations()` list in `src/tools/mod.rs`.
+
+## ✅ Definition of done
+
+- [ ] `cargo test` green (add tests for any pure logic).
+- [ ] Tool descriptions in **English**, written for a model: say *when* to use the
+      tool, not just what it does.
+- [ ] **Validated against a real world** — note the Foundry + system/addon versions
+      in your PR description.
+- [ ] README tables updated (EN **and** FR) + the total tool count.
+- [ ] Companion changes: bump `module.json` + `VERSION` in `main.mjs` (the release
+      workflow packs `module.zip`).
+
+## 🌍 Translations
+
+The server is language-neutral. GM-facing strings live in the companion's
+`lang/*.json` — new locales welcome. For translated *compendium content*,
+`client_babele` already speaks [Babele](https://foundryvtt.com/packages/babele).
