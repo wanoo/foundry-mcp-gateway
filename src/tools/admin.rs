@@ -166,8 +166,10 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 .ok_or_else(|| anyhow!(
                     "aucun monde actif — admin_edit_world passe par la session de jeu du bot"
                 ))?;
-            // état courant (le formulaire envoie le document complet)
-            let world = state.foundry.request_world().await?;
+            // état courant (le formulaire envoie le document complet) —
+            // les métadonnées vivent sous la clé `world` du dump.
+            let dump = state.foundry.request_world().await?;
+            let world = dump.get("world").cloned().unwrap_or(Value::Null);
             let current = |k: &str| world.get(k).cloned().unwrap_or(Value::Null);
             let mut payload = Map::new();
             payload.insert("action".into(), json!("editWorld"));
