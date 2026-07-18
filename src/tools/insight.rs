@@ -41,6 +41,12 @@ pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
          json!({"type":"object","properties":{
             "max_width":{"type":"number","description":"downscale before encoding (default 900)"},
             "quality":{"type":"number","description":"webp quality 0-1 (default 0.6)"}}})),
+        ("client_babele",
+         "Babele: the TRANSLATED view of a compendium as the players see it (the server only ever reads the source language). No args: list the translated packs. With pack: translated index (source vs displayed names). With pack + id/name: the full translated document.",
+         json!({"type":"object","properties":{
+            "pack":{"type":"string","description":"compendium collection, e.g. starwarsffg.talents"},
+            "id":{"type":"string"},"name":{"type":"string"},
+            "limit":{"type":"number","description":"index entries (default 100)"}}})),
         ("client_scene_report",
          "Playable state of the active scene as the GM's client sees it: tokens with grid coordinates, disposition, and REAL visibility (vision + fog), doors and their open/closed state, lights, measured templates, current selection and targets.",
          json!({"type":"object","properties":{
@@ -112,6 +118,17 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 "scene": r.get("scene"), "width": r.get("width"), "height": r.get("height"),
             });
             Ok(image_response(b64, mime, &caption))
+        }
+        "client_babele" => {
+            let mut a = json!({});
+            for k in ["pack", "id", "name", "limit"] {
+                if let Some(v) = args.get(k) {
+                    a[k] = v.clone();
+                }
+            }
+            Ok(text_response(
+                &call_companion(state, "babele", a, None, 20).await?,
+            ))
         }
         "client_scene_report" => {
             let mut a = json!({});

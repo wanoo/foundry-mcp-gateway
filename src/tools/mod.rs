@@ -162,6 +162,7 @@ fn annotations(name: &str) -> Value {
                 | "client_search"
                 | "client_capture"
                 | "client_scene_report"
+                | "client_babele"
                 | "client_weather_types"
                 | "client_token_fx_presets"
                 | "client_effect_catalog"
