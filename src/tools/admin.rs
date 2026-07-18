@@ -216,12 +216,9 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
 
         "admin_edit_world" => {
             let status = api_status(&url).await?;
-            let world_id = status
-                .get("world")
-                .and_then(Value::as_str)
-                .ok_or_else(|| anyhow!(
-                    "aucun monde actif — admin_edit_world passe par la session de jeu du bot"
-                ))?;
+            let world_id = status.get("world").and_then(Value::as_str).ok_or_else(|| {
+                anyhow!("aucun monde actif — admin_edit_world passe par la session de jeu du bot")
+            })?;
             // état courant (le formulaire envoie le document complet) —
             // les métadonnées vivent sous la clé `world` du dump.
             let dump = state.foundry.request_world().await?;
@@ -300,7 +297,11 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let ids = |key: &str| -> Vec<String> {
                 args.get(key)
                     .and_then(Value::as_array)
-                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default()
             };
             let (to_enable, to_disable) = (ids("enable"), ids("disable"));
@@ -416,7 +417,9 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         })
                     })
                     .collect();
-                return Ok(text_response(&json!({ "count": list.len(), "users": list })));
+                return Ok(text_response(
+                    &json!({ "count": list.len(), "users": list }),
+                ));
             }
             let mut report = json!({});
             if let Some(items) = create {
@@ -457,8 +460,9 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                             .into()
                     })
                     .unwrap_or(Value::Null);
-                report["passwordNote"] =
-                    json!("comptes sans mot de passe — à définir dans Foundry (Configurer les joueurs)");
+                report["passwordNote"] = json!(
+                    "comptes sans mot de passe — à définir dans Foundry (Configurer les joueurs)"
+                );
             }
             if let Some(items) = update {
                 let mut updates = Vec::new();
@@ -587,23 +591,27 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
 
         "admin_launch_world" => {
             let password = admin_password(state)?;
-            let world = match str_arg(args, "world") {
-                Some(w) => w,
-                None => state
-                    .last_world_id
-                    .lock()
-                    .await
-                    .clone()
-                    .ok_or_else(|| anyhow!("précisez 'world' (aucun monde vu actif récemment)"))?,
-            };
+            let world =
+                match str_arg(args, "world") {
+                    Some(w) => w,
+                    None => state.last_world_id.lock().await.clone().ok_or_else(|| {
+                        anyhow!("précisez 'world' (aucun monde vu actif récemment)")
+                    })?,
+                };
             let status = api_status(&url).await?;
             if let Some(active) = status.get("world").and_then(Value::as_str) {
-                bail!("le monde '{active}' tourne déjà — l'éteindre d'abord (admin_shutdown_world)");
+                bail!(
+                    "le monde '{active}' tourne déjà — l'éteindre d'abord (admin_shutdown_world)"
+                );
             }
             let client = http()?;
             admin_auth(&client, &url, password).await?;
-            let data = setup_post(&client, &url, &json!({ "action": "launchWorld", "world": world }))
-                .await?;
+            let data = setup_post(
+                &client,
+                &url,
+                &json!({ "action": "launchWorld", "world": world }),
+            )
+            .await?;
             Ok(text_response(&json!({
                 "launching": world,
                 "note": "démarrage en cours (~10-30 s) — admin_status ou ping pour suivre ; le bot se reconnecte seul",
@@ -615,7 +623,10 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let pkg_type = str_arg(args, "type").unwrap_or_else(|| "module".into());
             let id = str_arg(args, "id").ok_or_else(|| anyhow!("'id' est requis"))?;
             let status = api_status(&url).await?;
-            let world_active = status.get("world").and_then(Value::as_str).map(String::from);
+            let world_active = status
+                .get("world")
+                .and_then(Value::as_str)
+                .map(String::from);
 
             // Version installée + URL du manifest distant : lues sur le manifest
             // STATIQUE servi par l'instance — la réponse checkPackage ne contient
@@ -638,25 +649,28 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if name == "admin_check_package" {
                 // Check possible même monde allumé : le manifest distant se lit
                 // directement à son URL. Monde éteint : checkPackage fait foi.
-                let remote = if world_active.is_some() {
-                    let mu = manifest_url.clone().ok_or_else(|| anyhow!(
-                        "manifest distant introuvable pour '{id}' — paquet installé ? \
+                let remote =
+                    if world_active.is_some() {
+                        let mu = manifest_url.clone().ok_or_else(|| {
+                            anyhow!(
+                                "manifest distant introuvable pour '{id}' — paquet installé ? \
                          (sinon, éteindre le monde pour un checkPackage complet)"
-                    ))?;
-                    let m: Value = reqwest::get(&mu).await?.json().await?;
-                    m.get("version").and_then(Value::as_str).map(String::from)
-                } else {
-                    let client = http()?;
-                    admin_auth(&client, &url, admin_password(state)?).await?;
-                    let check = setup_post(&client, &url, &json!({
+                            )
+                        })?;
+                        let m: Value = reqwest::get(&mu).await?.json().await?;
+                        m.get("version").and_then(Value::as_str).map(String::from)
+                    } else {
+                        let client = http()?;
+                        admin_auth(&client, &url, admin_password(state)?).await?;
+                        let check = setup_post(&client, &url, &json!({
                         "action": "checkPackage", "strict": false, "type": pkg_type, "id": id,
                     }))
                     .await?;
-                    check
-                        .pointer("/remote/version")
-                        .and_then(Value::as_str)
-                        .map(String::from)
-                };
+                        check
+                            .pointer("/remote/version")
+                            .and_then(Value::as_str)
+                            .map(String::from)
+                    };
                 let update_available =
                     matches!((&installed, &remote), (Some(a), Some(b)) if a != b);
                 return Ok(text_response(&json!({
@@ -675,9 +689,13 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             }
             let client = http()?;
             admin_auth(&client, &url, admin_password(state)?).await?;
-            let check = setup_post(&client, &url, &json!({
-                "action": "checkPackage", "strict": false, "type": pkg_type, "id": id,
-            }))
+            let check = setup_post(
+                &client,
+                &url,
+                &json!({
+                    "action": "checkPackage", "strict": false, "type": pkg_type, "id": id,
+                }),
+            )
             .await?;
             let remote = check
                 .pointer("/remote/version")
@@ -738,8 +756,9 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         break 'attempts;
                     }
                 }
-                last_error =
-                    format!("tentative {attempt} : installation lancée mais non confirmée en 2 min");
+                last_error = format!(
+                    "tentative {attempt} : installation lancée mais non confirmée en 2 min"
+                );
             }
             Ok(text_response(&json!({
                 "package": id, "type": pkg_type,

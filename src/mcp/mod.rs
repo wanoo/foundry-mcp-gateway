@@ -46,7 +46,9 @@ impl McpState {
             admin_password: std::env::var("FOUNDRY_ADMIN_PASSWORD").ok().map(Arc::new),
             last_world_id: Arc::new(Mutex::new(None)),
             readonly: matches!(
-                std::env::var("FOUNDRY_READONLY").unwrap_or_default().as_str(),
+                std::env::var("FOUNDRY_READONLY")
+                    .unwrap_or_default()
+                    .as_str(),
                 "1" | "true" | "yes"
             ),
         }
