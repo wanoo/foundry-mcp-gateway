@@ -27,6 +27,10 @@ pub struct McpState {
     pub sessions: Arc<Mutex<HashMap<String, Arc<Session>>>>,
     /// URIs de ressources souscrites (partagées entre sessions, comme avant).
     pub subscriptions: Arc<Mutex<HashSet<String>>>,
+    /// FOUNDRY_ADMIN_PASSWORD : requis par les outils admin_* (plan /setup).
+    pub admin_password: Option<Arc<String>>,
+    /// Dernier id de monde vu actif — cible par défaut d'admin_launch_world.
+    pub last_world_id: Arc<Mutex<Option<String>>>,
 }
 
 impl McpState {
@@ -35,6 +39,8 @@ impl McpState {
             foundry,
             sessions: Arc::new(Mutex::new(HashMap::new())),
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
+            admin_password: std::env::var("FOUNDRY_ADMIN_PASSWORD").ok().map(Arc::new),
+            last_world_id: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -75,7 +81,7 @@ pub async fn handle_message(state: &McpState, message: &Value) -> Option<Value> 
             "serverInfo": { "name": SERVER_NAME, "version": SERVER_VERSION }
         })),
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": tools::definitions() })),
+        "tools/list" => Ok(json!({ "tools": tools::definitions(state) })),
         "tools/call" => {
             let name = params
                 .get("name")

@@ -3,6 +3,7 @@
 //! et les modules système arrivent par lots.)
 
 pub mod addons;
+pub mod admin;
 pub mod cc_family;
 pub mod companion;
 pub mod insight;
@@ -152,7 +153,10 @@ fn annotations(name: &str) -> Value {
         || name.starts_with("list_")
         || matches!(
             name,
-            "search_journals"
+            "admin_status"
+                | "admin_check_package"
+                | "manage_modules"
+                | "search_journals"
                 | "ping"
                 | "export_journals"
                 | "client_status"
@@ -180,7 +184,7 @@ fn tool(name: &str, description: &str, schema: Value) -> Value {
     })
 }
 
-pub fn definitions() -> Vec<Value> {
+pub fn definitions(state: &McpState) -> Vec<Value> {
     let mut tools = Vec::new();
     for (plural, singular, label) in COLLECTIONS {
         tools.push(tool(
@@ -295,6 +299,7 @@ pub fn definitions() -> Vec<Value> {
         .chain(addons::definitions())
         .chain(insight::definitions())
         .chain(table::definitions())
+        .chain(admin::definitions(state))
         .chain(companion::definitions())
         .chain(
             systems::loaded_modules()
@@ -335,6 +340,8 @@ pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Valu
         cc_family::run(state, name, args).await
     } else if addons::handles(name) {
         addons::run(state, name, args).await
+    } else if admin::handles(name) {
+        admin::run(state, name, args).await
     } else if table::handles(name) {
         table::run(state, name, args).await
     } else if insight::handles(name) {
