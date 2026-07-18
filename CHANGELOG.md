@@ -48,8 +48,9 @@ production, and its response shapes are now a versioned contract.
   installed version is now read from the package's static manifest.
 - **`toggle_pause` reported success blindly** — the `pause` event carries no ack,
   so a refusal (insufficient rights) still looked like success. It now waits for
-  Foundry's confirming broadcast and returns `confirmed`. Found by testing a
-  restricted-role bot.
+  the bot's role first and fails loudly on a non-GM account. (Foundry rebroadcasts
+  `pause` to everyone *except* the sender, so waiting for a confirmation is a
+  false negative — verified.) Found by testing a restricted-role bot.
 - **`manage_modules` was annotated read-only** although it writes
   `core.moduleConfiguration` — clients could auto-approve it.
 

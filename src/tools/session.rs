@@ -222,28 +222,39 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 .and_then(Value::as_bool)
                 .ok_or_else(|| anyhow!("'paused' is required"))?;
             let user_id = foundry.user_id().await;
-            // « pause » part sans accusé de réception : si le serveur refuse
-            // (droits insuffisants), l'émission réussit quand même. On confirme
-            // donc sur le broadcast que Foundry renvoie quand la pause prend.
-            let since = foundry.event_seq();
+            // « pause » part sans accusé de réception, et Foundry rediffuse à
+            // TOUS SAUF l'émetteur : le bot ne peut donc jamais voir son propre
+            // événement (piège vérifié — une attente de broadcast produisait un
+            // faux négatif alors que la pause avait pris). Le seul échec réaliste
+            // étant un compte non-MJ, on contrôle le rôle, c'est une lecture
+            // ciblée et bon marché.
+            let role = match &user_id {
+                Some(id) => {
+                    let fields = vec!["role".to_string()];
+                    foundry
+                        .get_document("users", Some(id), None, Some(&fields))
+                        .await
+                        .ok()
+                        .flatten()
+                        .and_then(|u| u.get("role").and_then(Value::as_i64))
+                }
+                None => None,
+            };
+            if role.is_some_and(|r| r < 4) {
+                bail!(
+                    "le compte du bot n'est pas Gamemaster (rôle {}) — Foundry ignorera la pause",
+                    role.unwrap_or(0)
+                );
+            }
             foundry
                 .emit(
                     "pause",
                     &[json!(paused), json!({"broadcast": true, "userId": user_id})],
                 )
                 .await?;
-            let confirmed = foundry
-                .wait_for_event(since, std::time::Duration::from_secs(3), move |e| {
-                    e.event == "pause" && e.args.first() == Some(&json!(paused))
-                })
-                .await
-                .is_some();
             Ok(text_response(&json!({
                 "paused": paused,
-                "confirmed": confirmed,
-                "note": if confirmed { Value::Null } else {
-                    json!("aucun broadcast de confirmation en 3 s — vérifier les droits du compte du bot (pause = MJ)")
-                },
+                "note": "émis sans accusé de réception (Foundry ne renvoie pas l'événement à son émetteur) ; rôle du bot vérifié au préalable",
             })))
         }
         "activate_scene" | "pull_users_to_scene" => {
