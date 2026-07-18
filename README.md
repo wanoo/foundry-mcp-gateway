@@ -5,7 +5,7 @@
 **Give your AI assistant a seat at your gaming table.**
 
 An independent [MCP](https://modelcontextprotocol.io) server for [Foundry VTT](https://foundryvtt.com) —
-one small Rust binary that logs into your world *like a player* and hands your AI **126 tools**
+one small Rust binary that logs into your world *like a player* and hands your AI **130 tools**
 to prep, run, and stage your games.
 
 [![Rust](https://img.shields.io/badge/Rust-single%20binary-orange?logo=rust)](https://www.rust-lang.org)
@@ -147,7 +147,7 @@ Several worlds? Put several objects in the credentials array and switch with
 
 ## 🧙 What your AI can do at your table
 
-126 tools, organized the way a GM works. Read-only tools are flagged so your MCP
+130 tools, organized the way a GM works. Read-only tools are flagged so your MCP
 client can auto-approve them; only deletions are marked destructive.
 
 ### 📖 Prep — build and query your world
@@ -190,6 +190,7 @@ client can auto-approve them; only deletions are marked destructive.
 | Tool | What for |
 |---|---|
 | ❓ `client_ask` | Pose a question in a real dialog **on a player's screen** and get their answer back |
+| 🎲 `client_roll_formula` | **Any formula, any system** through Foundry's real `Roll` engine — native chat card, Dice So Nice, actor roll data, per-die results |
 | 📣 `client_notify` · 🔔 `client_ping` · 🎥 `client_pan_camera` | Notifications, map pings, “everyone look here” camera moves — all targetable (`gm` / `players` / user ids) |
 | 📜 `client_show_document` | Open a sheet on the targeted clients |
 | 🎯 `client_select` / `client_target` · 🌫️ `client_fog` | Real selection & crosshair targets · reset explored fog |
@@ -237,6 +238,8 @@ All modules load by default; restrict with `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
 | 🩺 `admin_status` | `/api/status` — works even with the world down |
 | ✏️ `admin_edit_world` | World title, description, background image, next-session date — while it runs |
 | 🧩 `manage_modules` | Installed vs enabled (with versions) · enable/disable |
+| 👥 `manage_users` | Player / GM / assistant-GM accounts: list, create, change roles, assign characters (passwords stay in Foundry) |
+| 💾 `admin_list_backups` / `admin_backup_world` | Foundry's own backups — and `admin_update_package` takes one automatically first |
 | ⏻ `admin_shutdown_world` / `admin_launch_world` | Stop & start worlds (the bot reconnects by itself) |
 | ⬆️ `admin_check_package` / `admin_update_package` | Update modules, **systems**, worlds — check → install → verify, refuses while a world runs |
 

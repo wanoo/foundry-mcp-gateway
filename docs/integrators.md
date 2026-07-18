@@ -18,6 +18,9 @@ JSON document** — parse it, that's the actual result:
 - **Errors** are in-band: `"isError": true` and the text is a plain
   `"Error: <message>"` string (not JSON). JSON-RPC-level errors only occur for
   unknown tools or malformed requests.
+- **`structuredContent`** (MCP 2025-06-18) carries the same JSON as an object when
+  the result *is* an object — prefer it when your client supports it; the text
+  item stays for older clients. Arrays are text-only, by spec.
 - **`client_capture` is the one exception**: `content[0]` is
   `{ "type": "image", "data": "<base64>", "mimeType": "image/webp" }`, and
   `content[1]` is a text caption `{"scene", "width", "height"}`.
@@ -114,7 +117,14 @@ timeout with an explicit message. Note: the GM's **browser tab must be alive**
   "attempts": 1, "note": "vérifié installé (manifest statique)" }
 ```
 
-## 6 · Conventions worth relying on
+## 6 · Read-only deployments
+
+A gateway started with `FOUNDRY_READONLY=1` lists **only** read-only tools and
+answers any write with an in-band error. Point untrusted or player-facing
+integrations at such an instance: `tools/list` is your source of truth for what
+is callable, and `annotations.readOnlyHint` marks each tool.
+
+## 7 · Conventions worth relying on
 
 - Timestamps are Foundry's (`modifiedTime` in ms); ids are Foundry 16-char ids.
 - Booleans are real booleans, numbers real numbers — nothing is stringified

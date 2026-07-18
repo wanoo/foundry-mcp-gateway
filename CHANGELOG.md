@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [1.0.0] — 2026-07-18
 
+*130 tools · 50 of them read-only · validated against a live Foundry v13.351 world.*
+
 First stable release. The server is feature-complete for its scope, in
 production, and its response shapes are now a versioned contract.
 
@@ -23,7 +25,7 @@ production, and its response shapes are now a versioned contract.
   Foundry; accounts are created password-less.
 - **Backups** — `admin_list_backups`, `admin_backup_world`, and an automatic
   backup before `admin_update_package` (disable with `backup: false`; a failed
-  backup aborts the update).
+  backup aborts the update). Validated live: a 150 MB world archived in seconds.
 - **Generic dice** — `client_roll_formula`: any formula through Foundry's real
   `Roll` engine, on any system, with the native chat card, Dice So Nice, actor
   roll data, GM whisper, and per-die results.

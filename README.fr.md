@@ -6,7 +6,7 @@
 
 Un serveur [MCP](https://modelcontextprotocol.io) indépendant pour [Foundry VTT](https://foundryvtt.com) —
 un petit binaire Rust qui se connecte à votre monde *comme un joueur* et offre à votre IA
-**126 outils** pour préparer, animer et mettre en scène vos parties.
+**130 outils** pour préparer, animer et mettre en scène vos parties.
 
 [![Rust](https://img.shields.io/badge/Rust-un%20seul%20binaire-orange?logo=rust)](https://www.rust-lang.org)
 [![Foundry](https://img.shields.io/badge/Foundry%20VTT-v13%20%7C%20v14-ff6400)](https://foundryvtt.com)
@@ -148,7 +148,7 @@ gagné. Plusieurs mondes ? Plusieurs objets dans le tableau, bascule via
 
 ## 🧙 Ce que votre IA peut faire à votre table
 
-126 outils, organisés comme travaille un MJ. Les outils en lecture seule sont
+130 outils, organisés comme travaille un MJ. Les outils en lecture seule sont
 annotés (auto-approbables par votre client MCP) ; seules les suppressions sont
 marquées destructives.
 
@@ -192,6 +192,7 @@ marquées destructives.
 | Outil | Pour quoi |
 |---|---|
 | ❓ `client_ask` | Poser une question dans un vrai dialogue **sur l'écran d'un joueur** et récupérer sa réponse |
+| 🎲 `client_roll_formula` | **Toute formule, tout système** via le vrai moteur `Roll` de Foundry — carte de chat native, Dice So Nice, données de l'acteur, détail dé par dé |
 | 📣 `client_notify` · 🔔 `client_ping` · 🎥 `client_pan_camera` | Notifications, pings de carte, mouvements de caméra « regardez ici » — tous ciblables (`gm` / `players` / ids) |
 | 📜 `client_show_document` | Ouvrir une fiche chez les clients ciblés |
 | 🎯 `client_select` / `client_target` · 🌫️ `client_fog` | Sélection et cibles réelles · réinitialiser le brouillard exploré |
@@ -239,6 +240,8 @@ si `FOUNDRY_ADMIN_PASSWORD` est défini.
 | 🩺 `admin_status` | `/api/status` — marche même monde éteint |
 | ✏️ `admin_edit_world` | Titre, description, image de fond, prochaine session — monde allumé |
 | 🧩 `manage_modules` | Installés vs activés (avec versions) · activer/désactiver |
+| 👥 `manage_users` | Comptes joueur / MJ / assistant MJ : lister, créer, changer les rôles, assigner un personnage (les mots de passe restent dans Foundry) |
+| 💾 `admin_list_backups` / `admin_backup_world` | Les sauvegardes natives de Foundry — et `admin_update_package` en prend une automatiquement avant |
 | ⏻ `admin_shutdown_world` / `admin_launch_world` | Éteindre et lancer des mondes (le bot se reconnecte seul) |
 | ⬆️ `admin_check_package` / `admin_update_package` | Mettre à jour modules, **systèmes**, mondes — check → install → vérification, refuse si un monde tourne |
 
@@ -289,6 +292,9 @@ flowchart LR
   listings sur index BDD ; jamais de dump complet (hors `get_world`).
 - **Auto-réparant** — reconnexion infinie à backoff ; survit aux redémarrages du
   monde et même à une migration v13→v14 en vol.
+- **Mode lecture seule** — `FOUNDRY_READONLY=1` n'expose que les 50 outils de lecture
+  et refuse les écritures : brancherez-y des intégrations joueurs ou non fiables.
+- **MCP 2025-06-18** — avec négociation 2025-03-26 et sortie structurée.
 - **Protocole compagnon** — trois modes de livraison : *scène* (tous les clients
   ciblés exécutent), *adressé* (le client ciblé répond — `client_ask`), *unique*
   (un seul MJ répondeur élu).
