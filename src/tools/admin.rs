@@ -446,28 +446,46 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             }
             // installPackage répond vite ; la fin réelle se vérifie sur le
             // manifest statique (la version change quand l'extraction est finie).
-            setup_post(&client, &url, &json!({
-                "action": "installPackage", "type": pkg_type, "id": id, "manifest": manifest,
-            }))
-            .await?;
+            // Un téléchargement distant peut échouer (timeout, réseau, miroir) :
+            // 5 tentatives complètes avant d'abandonner.
             let mut verified = None;
-            for _ in 0..24 {
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                if let Some((now, _)) = read_local().await
-                    && now.is_some()
-                    && now != installed
-                {
-                    verified = now;
-                    break;
+            let mut attempts = 0;
+            let mut last_error = String::new();
+            'attempts: for attempt in 1..=5 {
+                attempts = attempt;
+                if attempt > 1 {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 }
+                if let Err(e) = setup_post(&client, &url, &json!({
+                    "action": "installPackage", "type": pkg_type, "id": id, "manifest": manifest,
+                }))
+                .await
+                {
+                    last_error = format!("tentative {attempt} : {e:#}");
+                    continue;
+                }
+                // vérification : jusqu'à 2 min pour voir la nouvelle version
+                for _ in 0..24 {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    if let Some((now, _)) = read_local().await
+                        && now.is_some()
+                        && now != installed
+                    {
+                        verified = now;
+                        break 'attempts;
+                    }
+                }
+                last_error =
+                    format!("tentative {attempt} : installation lancée mais non confirmée en 2 min");
             }
             Ok(text_response(&json!({
                 "package": id, "type": pkg_type,
                 "from": installed, "to": remote,
                 "installedNow": verified,
                 "updated": verified.is_some(),
-                "note": if verified.is_some() { "vérifié installé (manifest statique)" }
-                        else { "installation lancée mais non confirmée en 2 min — re-checker" },
+                "attempts": attempts,
+                "note": if verified.is_some() { "vérifié installé (manifest statique)".to_string() }
+                        else { format!("échec après {attempts} tentatives — {last_error}") },
             })))
         }
         other => bail!("Unknown tool: {other}"),
