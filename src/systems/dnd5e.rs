@@ -3,8 +3,8 @@
 //! skills.<sk>.{value,ability}, attributes.hp.{value,max,temp}, details.{level,xp,cr},
 //! attributes.exhaustion, currency.{pp,gp,ep,sp,cp}.
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Value, json};
 
 use crate::foundry::documents::get_path;
 use crate::mcp::McpState;

@@ -6,8 +6,8 @@
 //! Les outils `client_*` de cette famille délèguent au compagnon (API client-side
 //! game.assetLibrarian / game.time / macros du calendrier).
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Value, json};
 
 use super::companion::call_companion;
 use super::{str_arg, text_response};

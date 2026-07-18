@@ -3,22 +3,22 @@
 //! Modèle acteur : une tâche possède la connexion ; l'API passe par un handle.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Map, Value};
-use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use serde_json::{Map, Value, json};
+use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tracing::{info, warn};
 
 use super::auth::{self, Credential};
 use super::documents::{
     can_use_index, collection_to_type, filter_fields, matches_where, pushdown_query,
 };
-use super::protocol::{build_emit, parse_frame, Frame, PONG, SOCKET_CONNECT};
+use super::protocol::{Frame, PONG, SOCKET_CONNECT, build_emit, parse_frame};
 
 #[derive(Debug, Clone)]
 pub struct BufferedEvent {

@@ -1,11 +1,11 @@
 //! Module starwarsffg : 7 outils (noms historiques sans préfixe).
 //! Chemins vérifiés sur starwarsffg 2.0.3 (fiches réelles).
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Value, json};
 
 use super::swffg_derived::derive_skill_pool;
-use super::swffg_dice::{format_pool, format_result, result_json, roll_ffg_pool, FfgPool};
+use super::swffg_dice::{FfgPool, format_pool, format_result, result_json, roll_ffg_pool};
 use crate::mcp::McpState;
 use crate::tools::{post_chat, roll_table_draws, str_arg, text_response};
 
@@ -481,9 +481,18 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             }
             let content = format!(
                 "<h3>🩸 Blessure critique — {}</h3><p>Tirage : <strong>{}</strong>{}</p><blockquote>{}</blockquote>",
-                actor["name"].as_str().unwrap_or("?"), draw["roll"],
-                if modifier != 0 { format!(" (dont +{modifier} : {existing} blessure(s) existante(s))") } else { String::new() },
-                if text.is_empty() { "<em>hors table</em>" } else { &text },
+                actor["name"].as_str().unwrap_or("?"),
+                draw["roll"],
+                if modifier != 0 {
+                    format!(" (dont +{modifier} : {existing} blessure(s) existante(s))")
+                } else {
+                    String::new()
+                },
+                if text.is_empty() {
+                    "<em>hors table</em>"
+                } else {
+                    &text
+                },
             );
             post_chat(state, &content,
                 json!({"foundry-mcp": {"criticalInjury": {"actor": actor["_id"], "roll": draw["roll"], "modifier": modifier}}}),

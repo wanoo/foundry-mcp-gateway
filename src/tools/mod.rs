@@ -12,8 +12,8 @@ pub mod markdown;
 pub mod session;
 pub mod table;
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Map, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Map, Value, json};
 
 use crate::foundry::documents::{can_use_index, filter_fields, get_path};
 use crate::mcp::McpState;
@@ -608,10 +608,11 @@ async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         .and_then(Value::as_array)
                         .ok_or_else(|| anyhow!("'data' (array) is required"))?;
                     op["data"] = json!(data);
-                    op["keepId"] = json!(args
-                        .get("keep_id")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false));
+                    op["keepId"] = json!(
+                        args.get("keep_id")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false)
+                    );
                     op["renderSheet"] = json!(false);
                     "create"
                 }

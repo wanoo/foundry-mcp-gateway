@@ -1,8 +1,8 @@
 //! Gestion : settings, ownership, compendiums, import/export, fichiers,
 //! credentials/instances, attente de messages — port des comportements TS.
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Value, json};
 
 use super::markdown::html_to_markdown;
 use super::{str_arg, text_response};

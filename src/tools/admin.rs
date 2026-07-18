@@ -12,8 +12,8 @@
 //! Outils exposés seulement si FOUNDRY_ADMIN_PASSWORD est présent (sauf
 //! admin_edit_world qui n'en a pas besoin : session de jeu suffit).
 
-use anyhow::{anyhow, bail, Context, Result};
-use serde_json::{json, Map, Value};
+use anyhow::{Context, Result, anyhow, bail};
+use serde_json::{Map, Value, json};
 
 use super::{str_arg, text_response};
 use crate::foundry::auth::split_host;

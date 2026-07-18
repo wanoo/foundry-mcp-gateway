@@ -2,7 +2,7 @@
 //! (acteur, items, talents APPRIS des spécialisations, upgrades appris des
 //! pouvoirs de la Force). Résout le piège « le doc source affiche 0 ».
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Clone)]
 pub struct AttributeMod {

@@ -2,8 +2,8 @@
 //! Chemins vérifiés sur le système Foundryborne/daggerheart :
 //! system.traits.<trait>.value · system.resources.{hitPoints,stress,hope}.{value,max}.
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Value, json};
 
 use crate::foundry::documents::get_path;
 use crate::mcp::McpState;

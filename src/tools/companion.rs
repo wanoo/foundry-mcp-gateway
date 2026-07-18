@@ -7,8 +7,8 @@
 //! et on attend la réponse dans le buffer d'événements. Si aucun module n'est
 //! installé/actif, la commande expire avec un message explicite.
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Value, json};
 use std::time::Duration;
 
 use super::{str_arg, text_response};

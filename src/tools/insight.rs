@@ -7,8 +7,8 @@
 //!   · client_capture : une image de la vue courante (contenu image MCP natif).
 //!   · client_scene_report : l'état jouable de la scène (visibilité réelle).
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Value, json};
 
 use super::companion::call_companion;
 use super::{image_response, str_arg, text_response};

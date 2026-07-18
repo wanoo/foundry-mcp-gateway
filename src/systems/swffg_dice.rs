@@ -1,6 +1,6 @@
 //! Dés narratifs Star Wars FFG — faces officielles, rng injectable.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FfgPool {

@@ -6,7 +6,7 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use axum::extract::State;
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -16,7 +16,7 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use super::{handle_message, McpState, Session};
+use super::{McpState, Session, handle_message};
 
 const SESSION_HEADER: &str = "mcp-session-id";
 

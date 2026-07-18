@@ -4,8 +4,8 @@
 //!   · Sequencer (avancé) : effets entre tokens (attaques/projectiles) et sons
 //!     (client — l'effet simple at-token/at-point est `client_play_effect`).
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Value, json};
 
 use super::companion::call_companion;
 use super::{str_arg, text_response};

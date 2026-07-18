@@ -1,0 +1,4 @@
+# Le crate est en edition 2024 : on fixe le style correspondant pour que
+# rustfmt donne le MEME résultat partout (le défaut varie selon les configs,
+# ce qui a fait échouer la CI alors que le formatage local passait).
+style_edition = "2024"

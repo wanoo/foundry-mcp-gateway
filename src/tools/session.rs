@@ -1,8 +1,8 @@
 //! Outils de séance : diffusion aux joueurs, scènes, tokens, conditions,
 //! combat, playlists, tables — port 1:1 des comportements validés en TS.
 
-use anyhow::{anyhow, bail, Result};
-use serde_json::{json, Map, Value};
+use anyhow::{Result, anyhow, bail};
+use serde_json::{Map, Value, json};
 
 use super::{str_arg, text_response};
 use crate::mcp::McpState;

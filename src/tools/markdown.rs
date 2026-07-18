@@ -81,7 +81,9 @@ mod tests {
 
     #[test]
     fn titres_emphase_listes() {
-        let md = html_to_markdown("<h2>Acte VI</h2><p>Un <strong>duel</strong> <em>tendu</em>.</p><ul><li>Riar</li><li>Toydaria</li></ul>");
+        let md = html_to_markdown(
+            "<h2>Acte VI</h2><p>Un <strong>duel</strong> <em>tendu</em>.</p><ul><li>Riar</li><li>Toydaria</li></ul>",
+        );
         assert!(md.contains("## Acte VI"));
         assert!(md.contains("**duel**"));
         assert!(md.contains("*tendu*"));
@@ -96,7 +98,9 @@ mod tests {
             ),
             "**Stress mécanique** · Facile"
         );
-        let md = html_to_markdown("<table><tr><th>d100</th><th>Effet</th></tr><tr><td>1-9</td><td>Stress</td></tr></table>");
+        let md = html_to_markdown(
+            "<table><tr><th>d100</th><th>Effet</th></tr><tr><td>1-9</td><td>Stress</td></tr></table>",
+        );
         assert!(md.contains("| d100 | Effet |"));
         assert!(md.contains("| 1-9 | Stress |"));
     }

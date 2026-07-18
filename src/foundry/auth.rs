@@ -2,7 +2,7 @@
 //! (GET /join), login (POST /join). Supporte les hostnames à préfixe de route
 //! (« rpg.example.com/star-wars ») et le binding v13 (query) / v14 (cookie).
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_json::Value;
 
