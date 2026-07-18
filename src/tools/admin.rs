@@ -412,14 +412,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                             "_id": u["_id"], "name": u["name"],
                             "role": r, "roleName": label(r),
                             "character": u.get("character"),
-                            "hasPassword": u.get("password").and_then(Value::as_str)
-                                .map(|p| !p.is_empty()).unwrap_or(false),
                         })
                     })
                     .collect();
-                return Ok(text_response(
-                    &json!({ "count": list.len(), "users": list }),
-                ));
+                // Foundry blanchit password/passwordSalt pour TOUS les clients
+                // (vérifié : chaîne vide même pour le compte du bot) — on ne
+                // peut donc PAS dire ici si un compte a un mot de passe.
+                return Ok(text_response(&json!({
+                    "count": list.len(), "users": list,
+                    "note": "passwords are never visible client-side (Foundry blanks them) — set them in Configure Players",
+                })));
             }
             let mut report = json!({});
             if let Some(items) = create {
