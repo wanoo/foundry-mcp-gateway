@@ -542,8 +542,10 @@ async fn record_event(shared: &Arc<Shared>, event: String, mut args: Vec<Value>)
     if IGNORED_EVENTS.contains(&event.as_str()) {
         return;
     }
+    // Le canal du compagnon porte les RÉPONSES aux outils client_* (dont les
+    // captures d'écran) : les tronquer les détruirait.
     let raw = serde_json::to_string(&args).unwrap_or_default();
-    if raw.len() > EVENT_ARGS_MAX_CHARS {
+    if !event.starts_with("module.") && raw.len() > EVENT_ARGS_MAX_CHARS {
         args = vec![json!({"truncated": true, "bytes": raw.len()})];
     }
     let seq = shared.event_seq.fetch_add(1, Ordering::SeqCst) + 1;

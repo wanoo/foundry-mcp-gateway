@@ -5,6 +5,7 @@
 pub mod addons;
 pub mod cc_family;
 pub mod companion;
+pub mod insight;
 pub mod manage;
 pub mod markdown;
 pub mod session;
@@ -43,6 +44,14 @@ fn plural_to_collection(plural: &str) -> &str {
 
 pub fn text_response(value: &Value) -> Value {
     json!({ "content": [{ "type": "text", "text": value.to_string() }] })
+}
+
+/// Contenu image MCP natif (base64 brut, sans préfixe data:) + une légende texte.
+pub fn image_response(base64: &str, mime_type: &str, caption: &Value) -> Value {
+    json!({ "content": [
+        { "type": "image", "data": base64, "mimeType": mime_type },
+        { "type": "text", "text": caption.to_string() },
+    ]})
 }
 
 pub fn error_response(message: String) -> Value {
@@ -142,7 +151,16 @@ fn annotations(name: &str) -> Value {
         || name.starts_with("list_")
         || matches!(
             name,
-            "search_journals" | "ping" | "export_journals" | "client_status" | "client_get_state"
+            "search_journals"
+                | "ping"
+                | "export_journals"
+                | "client_status"
+                | "client_get_state"
+                | "client_get_derived"
+                | "client_enrich"
+                | "client_search"
+                | "client_capture"
+                | "client_scene_report"
         );
     let destructive = matches!(name, "delete_document" | "delete_compendium");
     json!({ "readOnlyHint": read_only, "destructiveHint": destructive })
@@ -270,6 +288,7 @@ pub fn definitions() -> Vec<Value> {
         .chain(manage::definitions())
         .chain(cc_family::definitions())
         .chain(addons::definitions())
+        .chain(insight::definitions())
         .chain(companion::definitions())
         .chain(
             systems::loaded_modules()
@@ -310,6 +329,8 @@ pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Valu
         cc_family::run(state, name, args).await
     } else if addons::handles(name) {
         addons::run(state, name, args).await
+    } else if insight::handles(name) {
+        insight::run(state, name, args).await
     } else if companion::handles(name) {
         companion::run(state, name, args).await
     } else if systems::loaded_modules().iter().any(|m| (m.handles)(name)) {
