@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Response shapes** — the contract documented in
 [docs/integrators.md](docs/integrators.md) — only change on a **major** version.
 
+## [1.3.0] — 2026-07-19
+
+### Added
+
+- **`admin_create_world`** and **`admin_install_package`** — the last two links
+  of a cross-server migration: stand up an empty world on the target and bring
+  it to module/system parity before pouring content in. Together with
+  `copy_documents`, `copy_assets` and `manage_users`, a world can be recreated
+  on a fresh server end to end. ⚠️ Both are implemented from the setup protocol
+  but **not yet exercised against a live server** — creating worlds and
+  installing packages on someone's instance isn't something to test unprompted.
+
 ## [1.2.0] — 2026-07-19
 
 ### Added

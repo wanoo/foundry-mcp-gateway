@@ -68,6 +68,22 @@ pub fn definitions(state: &McpState) -> Vec<(&'static str, &'static str, Value)>
                 "type":{"type":"string","description":"world (default) | module | system"},
                 "id":{"type":"string","description":"package id; defaults to the last active world"},
                 "note":{"type":"string","description":"why you took it — shown in Foundry's backup list"}}})),
+            ("admin_create_world",
+             "Create a new (empty) world on this instance — the target of a migration. Needs the system id, which must already be installed (admin_install_package). Setup mode only.",
+             json!({"type":"object","properties":{
+                "id":{"type":"string","description":"world id, url-safe, e.g. star-wars-2"},
+                "title":{"type":"string"},
+                "system":{"type":"string","description":"game system id, e.g. starwarsffg"},
+                "description":{"type":"string"},
+                "background":{"type":"string","description":"image path for the join page"}},
+                "required":["id","title","system"]})),
+            ("admin_install_package",
+             "Install a module or system that is NOT yet on this instance, from its manifest URL — how you bring a target server up to parity before copying a world onto it. Setup mode only. Already-installed packages are reported as such (use admin_update_package to upgrade them).",
+             json!({"type":"object","properties":{
+                "type":{"type":"string","description":"module (default) | system"},
+                "id":{"type":"string","description":"package id"},
+                "manifest":{"type":"string","description":"manifest URL (module.json / system.json)"}},
+                "required":["id","manifest"]})),
             ("admin_check_package",
              "Check if an update is available for a module, system or world (compares installed vs remote manifest). Setup mode only (shut the world down first).",
              json!({"type":"object","properties":{
@@ -523,6 +539,89 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 report["deleted"] = json!(ids);
             }
             Ok(text_response(&report))
+        }
+
+        "admin_create_world" => {
+            let password = admin_password(state)?;
+            let id = str_arg(args, "id").ok_or_else(|| anyhow!("'id' est requis"))?;
+            let title = str_arg(args, "title").ok_or_else(|| anyhow!("'title' est requis"))?;
+            let system = str_arg(args, "system").ok_or_else(|| anyhow!("'system' est requis"))?;
+            let status = api_status(&url).await?;
+            if let Some(active) = status.get("world").and_then(Value::as_str) {
+                bail!("le monde '{active}' tourne — la création exige le mode setup");
+            }
+            let client = http()?;
+            admin_auth(&client, &url, password).await?;
+            let mut body = json!({
+                "action": "createWorld",
+                "id": id, "title": title, "system": system,
+                // description est requis par le schéma World (HTMLField)
+                "description": str_arg(args, "description").unwrap_or_default(),
+            });
+            if let Some(bg) = str_arg(args, "background") {
+                body["background"] = json!(bg);
+            }
+            let data = setup_post(&client, &url, &body).await?;
+            Ok(text_response(&json!({
+                "created": id, "title": title, "system": system,
+                "note": "monde vide créé — le lancer avec admin_launch_world, ou y verser du contenu avec copy_documents / copy_assets",
+                "response": data,
+            })))
+        }
+
+        "admin_install_package" => {
+            let password = admin_password(state)?;
+            let pkg_type = str_arg(args, "type").unwrap_or_else(|| "module".into());
+            let id = str_arg(args, "id").ok_or_else(|| anyhow!("'id' est requis"))?;
+            let manifest =
+                str_arg(args, "manifest").ok_or_else(|| anyhow!("'manifest' est requis"))?;
+            let status = api_status(&url).await?;
+            if let Some(active) = status.get("world").and_then(Value::as_str) {
+                bail!("le monde '{active}' tourne — l'installation exige le mode setup");
+            }
+            // déjà présent ? le manifest statique fait foi
+            let static_manifest = match pkg_type.as_str() {
+                "system" => format!("{url}/systems/{id}/system.json"),
+                _ => format!("{url}/modules/{id}/module.json"),
+            };
+            if let Ok(resp) = reqwest::get(&static_manifest).await
+                && resp.status().is_success()
+                && let Ok(m) = resp.json::<Value>().await
+            {
+                return Ok(text_response(&json!({
+                    "package": id, "installed": m.get("version"),
+                    "created": false,
+                    "reason": "déjà installé — utiliser admin_update_package pour le mettre à jour",
+                })));
+            }
+            let client = http()?;
+            admin_auth(&client, &url, password).await?;
+            setup_post(
+                &client,
+                &url,
+                &json!({
+                    "action": "installPackage", "type": pkg_type, "id": id, "manifest": manifest,
+                }),
+            )
+            .await?;
+            // confirmation : le manifest statique apparaît quand l'extraction est finie
+            let mut installed = None;
+            for _ in 0..24 {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                if let Ok(resp) = reqwest::get(&static_manifest).await
+                    && resp.status().is_success()
+                    && let Ok(m) = resp.json::<Value>().await
+                {
+                    installed = m.get("version").and_then(Value::as_str).map(String::from);
+                    break;
+                }
+            }
+            Ok(text_response(&json!({
+                "package": id, "type": pkg_type,
+                "installed": installed, "created": installed.is_some(),
+                "note": if installed.is_some() { "vérifié installé (manifest statique)" }
+                        else { "installation lancée mais non confirmée en 2 min — re-vérifier" },
+            })))
         }
 
         "admin_list_backups" => {

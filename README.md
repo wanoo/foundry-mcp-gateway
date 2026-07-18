@@ -5,7 +5,7 @@
 **Give your AI assistant a seat at your gaming table.**
 
 An independent [MCP](https://modelcontextprotocol.io) server for [Foundry VTT](https://foundryvtt.com) —
-one small Rust binary that logs into your world *like a player* and hands your AI **132 tools**
+one small Rust binary that logs into your world *like a player* and hands your AI **134 tools**
 to prep, run, and stage your games.
 
 [![Rust](https://img.shields.io/badge/Rust-single%20binary-orange?logo=rust)](https://www.rust-lang.org)
@@ -269,6 +269,22 @@ with **`copy_assets`**, which walks the source storage, recreates the tree on th
 target and uploads what's missing (streamed through the gateway — the two servers
 never talk to each other). Both tools are incremental: re-running them only moves
 what changed.
+
+
+### 🚚 Migrating a world to another server
+
+The whole chain is covered — run each step with `dry_run` first:
+
+| Step | Tool |
+|---|---|
+| 1. Bring the target to parity | `manage_modules` (see what's there) → `admin_install_package` (system + modules) |
+| 2. Create the destination world | `admin_create_world` |
+| 3. Pour the content in | `copy_documents`, collection by collection: folders → journals/items/tables → actors → scenes |
+| 4. Carry the files | `copy_assets` (otherwise images dangle) |
+| 5. Recreate the players | `manage_users` (names, roles, characters — **passwords stay with the GM**) |
+
+`_id`s are preserved throughout, so `@UUID` links and scene→actor references
+survive the move.
 
 ### 🧠 Beyond tools — native MCP goodies
 

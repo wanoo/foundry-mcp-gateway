@@ -6,7 +6,7 @@
 
 Un serveur [MCP](https://modelcontextprotocol.io) indépendant pour [Foundry VTT](https://foundryvtt.com) —
 un petit binaire Rust qui se connecte à votre monde *comme un joueur* et offre à votre IA
-**132 outils** pour préparer, animer et mettre en scène vos parties.
+**134 outils** pour préparer, animer et mettre en scène vos parties.
 
 [![Rust](https://img.shields.io/badge/Rust-un%20seul%20binaire-orange?logo=rust)](https://www.rust-lang.org)
 [![Foundry](https://img.shields.io/badge/Foundry%20VTT-v13%20%7C%20v14-ff6400)](https://foundryvtt.com)
@@ -272,6 +272,22 @@ dans le vide : complétez avec **`copy_assets`**, qui parcourt le stockage sourc
 recrée l'arborescence sur la cible et téléverse ce qui manque (en transitant par la
 passerelle — les deux serveurs n'ont jamais besoin de se joindre). Les deux outils
 sont incrémentaux : les relancer ne déplace que ce qui a changé.
+
+
+### 🚚 Migrer un monde vers un autre serveur
+
+Toute la chaîne est couverte — chaque étape avec `dry_run` d'abord :
+
+| Étape | Outil |
+|---|---|
+| 1. Mettre la cible à parité | `manage_modules` (l'état des lieux) → `admin_install_package` (système + modules) |
+| 2. Créer le monde de destination | `admin_create_world` |
+| 3. Y verser le contenu | `copy_documents`, collection par collection : dossiers → journaux/objets/tables → acteurs → scènes |
+| 4. Emmener les fichiers | `copy_assets` (sinon les images pendent dans le vide) |
+| 5. Recréer les joueurs | `manage_users` (noms, rôles, personnages — **les mots de passe restent au MJ**) |
+
+Les `_id` sont conservés de bout en bout : les liens `@UUID` et les références
+scène→acteur survivent au déménagement.
 
 ### 🧠 Au-delà des outils — le MCP natif
 
