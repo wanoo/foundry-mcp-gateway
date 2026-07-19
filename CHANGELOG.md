@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Response shapes** — the contract documented in
 [docs/integrators.md](docs/integrators.md) — only change on a **major** version.
 
+## [1.5.0] — 2026-07-19
+
+*First release aimed at people other than its author.*
+
+### Added
+
+- **`--dump-tools`, `--version`, `--help`** — the full tool catalogue as JSON
+  without connecting to Foundry. It also became the source of truth for
+  `scripts/check-docs.sh`, which fails CI when the READMEs' numbers drift from
+  the code. They had drifted three times; the READMEs once announced 131 *and*
+  134 tools on the same page.
+- **Version drift detection** — the gateway and the companion module now share
+  one version number, and `client_status` reports `versionDrift` naming the half
+  that's behind, instead of leaving you to compare by eye.
+- **Automated publishing** — bump the version, push, and the workflow tags,
+  builds a multi-arch Docker image, cuts the release with binaries, and
+  publishes to crates.io. Nothing else to run.
+- **Collaboration kit** — Contributor Covenant 3.0, a security policy stating
+  the real threat model, issue forms, PR template, dependabot, CODEOWNERS.
+
+### Fixed
+
+- **The quick start's first step was impossible.** It told readers to find the
+  bot's `_id` in `view-source:/join`; in Foundry v13 that page is a 2 KB
+  client-rendered shell, verified on both a live world and a fresh container.
+  Rewritten around a browser-console one-liner.
+- Tool counts now stated honestly: 134 with `FOUNDRY_ADMIN_PASSWORD`, 126
+  without, 50 read-only — the number depends on configuration, which the docs
+  used to hide.
+
 ## [1.4.0] — 2026-07-19
 
 *Cross-server migration validated end to end against a real second server

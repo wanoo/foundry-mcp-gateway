@@ -78,6 +78,20 @@ pub fn handles(name: &str) -> bool {
     name.starts_with("client_")
 }
 
+/// Comparaison semver simple (majeur.mineur.correctif, sans pré-version — ni
+/// Foundry ni ce projet n'en utilisent).
+fn version_lt(a: &str, b: &str) -> bool {
+    let part = |v: &str| -> Vec<u32> { v.split('.').map(|x| x.parse().unwrap_or(0)).collect() };
+    part(a) < part(b)
+}
+
+/// Les deux moitiés dérivent-elles ? On compare au mineur près : un correctif
+/// d'un seul côté est normal, un mineur d'écart signale un protocole désaccordé.
+fn drifted(a: &str, b: &str) -> bool {
+    let minor = |v: &str| v.split('.').take(2).collect::<Vec<_>>().join(".");
+    !a.is_empty() && minor(a) != minor(b)
+}
+
 /// Émet une commande sur le canal du module et attend la réponse (reply == id).
 pub async fn call_companion(
     state: &McpState,
@@ -135,7 +149,35 @@ fn passthrough_id(args: &Value, key: &str) -> Option<Value> {
 pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
     let targets = args.get("targets").cloned();
     let result = match name {
-        "client_status" => call_companion(state, "ping_module", json!({}), None, 8).await?,
+        "client_status" => {
+            let mut status = call_companion(state, "ping_module", json!({}), None, 8).await?;
+            // Les deux moitiés partagent un numéro de version : elles parlent un
+            // protocole commun, et un ajout d'un seul côté casse en silence. On
+            // le DIT plutôt que de laisser l'utilisateur deviner.
+            let theirs = status
+                .get("version")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let ours = crate::mcp::SERVER_VERSION;
+            if drifted(&theirs, ours) {
+                let behind = if version_lt(&theirs, ours) {
+                    "companion"
+                } else {
+                    "gateway"
+                };
+                status["gatewayVersion"] = json!(ours);
+                status["versionDrift"] = json!(true);
+                status["note"] = json!(format!(
+                    "Version drift: gateway {ours}, companion {theirs}. The {behind} is behind — \
+                     both halves speak one protocol and are released together, so update it."
+                ));
+            } else {
+                status["gatewayVersion"] = json!(ours);
+                status["versionDrift"] = json!(false);
+            }
+            status
+        }
         "client_run_macro" => {
             let macro_ref = str_arg(args, "macro").ok_or_else(|| anyhow!("'macro' is required"))?;
             let scope = args.get("scope").cloned().unwrap_or(json!({}));
@@ -234,4 +276,23 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         other => bail!("Unknown tool: {other}"),
     };
     Ok(text_response(&result))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derive_de_version() {
+        assert!(!drifted("1.5.0", "1.5.0"));
+        assert!(!drifted("1.5.3", "1.5.0")); // un correctif d'écart : normal
+        assert!(drifted("0.5.0", "1.5.0")); // majeur : dérive
+        assert!(drifted("1.4.0", "1.5.0")); // mineur : dérive
+        assert!(!drifted("", "1.5.0")); // version inconnue : on n'invente pas
+
+        assert!(version_lt("0.5.0", "1.5.0"));
+        assert!(version_lt("1.4.9", "1.5.0"));
+        assert!(!version_lt("1.5.0", "1.5.0"));
+        assert!(!version_lt("1.10.0", "1.9.0")); // pas une comparaison de texte
+    }
 }

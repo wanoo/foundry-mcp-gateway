@@ -10,7 +10,7 @@ descriptions d'outils restent en anglais, c'est ce que lisent les modèles.)*
 
 ```sh
 git clone https://github.com/wanoo/foundry-mcp-gateway && cd foundry-mcp-gateway
-cargo test                       # 23 unit tests, no Foundry needed
+cargo test                       # 24 unit tests, no Foundry needed
 ./scripts/check-docs.sh          # docs must match the code (see below)
 foundry-mcp --dump-tools | jq    # the full tool catalogue, no connection needed
 ```

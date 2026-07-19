@@ -372,6 +372,14 @@ Le cœur est 100 % agnostique — tout le spécifique jeu ou addon est un plugin
 Règle d'or dans les deux cas : **vérifiez vos chemins de données sur un monde réel**
 et dites quelle version vous avez validée. `cargo test` doit rester vert.
 
+## 🔗 Versions
+
+La passerelle et le [module compagnon](https://github.com/wanoo/foundry-mcp-gateway-companion)
+**partagent un numéro de version** — ils parlent un protocole commun, donc un
+écart signifie qu'une moitié est en retard et qu'un outil `client_*` échouera de
+façon déroutante. Lancez `client_status` : il signale la dérive et nomme la
+moitié à mettre à jour.
+
 ## 📋 Changelog
 
 Versioned with semver — response shapes only change on a major bump.

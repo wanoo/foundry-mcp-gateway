@@ -365,6 +365,13 @@ The core is 100 % system-agnostic — everything game- or addon-specific is a pl
 Ground rule either way: **verify your data paths against a real world** and say which
 version you validated. `cargo test` must stay green.
 
+## 🔗 Versions
+
+The gateway and the [companion module](https://github.com/wanoo/foundry-mcp-gateway-companion)
+**share one version number** — they speak a common protocol, so a mismatch means
+one half is behind and some `client_*` tool will fail in a confusing way. Run
+`client_status`: it reports the drift and names the half to update.
+
 ## 📋 Changelog
 
 Versioned with semver — response shapes only change on a major bump.
