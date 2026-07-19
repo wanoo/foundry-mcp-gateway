@@ -272,7 +272,7 @@ dependencies = [
  "anyhow",
  "axum",
  "futures-util",
- "rand 0.9.5",
+ "rand 0.10.2",
  "regex",
  "reqwest",
  "serde",
