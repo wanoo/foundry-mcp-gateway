@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/banner.png" alt="foundry-mcp-gateway" width="820">
+
 # 🎲 foundry-mcp-gateway
 
 **Give your AI assistant a seat at your gaming table.**
