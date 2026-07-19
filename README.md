@@ -386,9 +386,10 @@ version you validated. `cargo test` must stay green.
 ## 🔗 Versions
 
 The gateway and the [companion module](https://github.com/wanoo/foundry-mcp-gateway-companion)
-**share one version number** — they speak a common protocol, so a mismatch means
-one half is behind and some `client_*` tool will fail in a confusing way. Run
-`client_status`: it reports the drift and names the half to update.
+move together: they must match on **major.minor** (1.5.x on both sides), because
+that's what a protocol change bumps. Patch releases are independent — a fix to
+one half doesn't oblige the other to reissue. Run `client_status`: it compares
+them and names the half to update when they've actually drifted apart.
 
 ## 📋 Changelog
 

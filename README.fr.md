@@ -393,10 +393,11 @@ et dites quelle version vous avez validée. `cargo test` doit rester vert.
 ## 🔗 Versions
 
 La passerelle et le [module compagnon](https://github.com/wanoo/foundry-mcp-gateway-companion)
-**partagent un numéro de version** — ils parlent un protocole commun, donc un
-écart signifie qu'une moitié est en retard et qu'un outil `client_*` échouera de
-façon déroutante. Lancez `client_status` : il signale la dérive et nomme la
-moitié à mettre à jour.
+avancent ensemble : ils doivent concorder sur le **major.minor** (1.5.x des deux
+côtés), puisque c'est ce qu'un changement de protocole incrémente. Les correctifs
+sont indépendants — une réparation d'un côté n'oblige pas l'autre à republier.
+Lancez `client_status` : il les compare et nomme la moitié à mettre à jour quand
+ils ont réellement divergé.
 
 ## 📋 Changelog
 
