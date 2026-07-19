@@ -2,8 +2,19 @@
 name = "foundry-mcp-gateway"
 version = "1.4.0"
 edition = "2024"
-description = "Serveur MCP indépendant pour Foundry VTT — client socket natif, transport HTTP streamable, multi-systèmes de jeu."
+description = "MCP server for Foundry VTT: a native socket client exposing 134 tools over streamable HTTP, with pluggable game-system modules."
 license = "MIT"
+repository = "https://github.com/wanoo/foundry-mcp-gateway"
+homepage = "https://github.com/wanoo/foundry-mcp-gateway"
+documentation = "https://github.com/wanoo/foundry-mcp-gateway/blob/main/docs/integrators.md"
+readme = "README.md"
+keywords = ["mcp", "foundry-vtt", "ttrpg", "gateway", "llm"]
+categories = ["command-line-utilities", "game-development", "web-programming::http-server"]
+# edition 2024 exige Rust 1.85 : le dire ici donne une erreur claire au lieu
+# d'une avalanche d'erreurs de syntaxe sur une vieille toolchain.
+rust-version = "1.85"
+# Le paquet publié n'a pas besoin de la doc annexe ni de la CI.
+exclude = ["/docs", "/.github", "/scripts", "/foundry-local", "*.md", "!README.md"]
 
 [[bin]]
 name = "foundry-mcp"

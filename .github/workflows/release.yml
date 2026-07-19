@@ -1,0 +1,215 @@
+# Publication pilotée par la VERSION, pas par une commande.
+#
+# Livrer = changer `version` dans Cargo.toml et pousser sur main. Ce workflow
+# détecte qu'aucun tag ne correspond, et enchaîne : tag → image Docker
+# multi-arch → release GitHub avec binaires → crates.io. Version inchangée,
+# tout est sauté : chaque étape vérifie d'abord si le travail est déjà fait,
+# donc le workflow est rejouable sans rien casser.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  IMAGE: wanoo/foundry-mcp-gateway
+
+jobs:
+  # ─── La version a-t-elle changé ? Tout le reste en dépend. ────────────────
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: v
+        run: |
+          version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$version" >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::v$version est déjà taguée — rien à publier."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Nouvelle version détectée : $version"
+          fi
+
+  tag:
+    needs: check
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create and push the tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ needs.check.outputs.version }}" \
+                  -m "v${{ needs.check.outputs.version }}"
+          git push origin "v${{ needs.check.outputs.version }}"
+
+  # ─── Image Docker : runners ARM natifs, JAMAIS QEMU ──────────────────────
+  # L'émulation coûte 5× à 20× sur une compilation Rust avec LTO (build de
+  # 4 min → 30-60 min). Les runners arm64 sont gratuits sur dépôt public.
+  docker:
+    needs: [check, tag]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: prep
+        run: echo "pair=${{ matrix.platform }}" | tr '/' '-' >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: wanoo
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          cache-from: type=gha,scope=${{ steps.prep.outputs.pair }}
+          cache-to: type=gha,mode=max,scope=${{ steps.prep.outputs.pair }}
+          outputs: type=image,name=docker.io/${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ steps.prep.outputs.pair }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  docker-manifest:
+    needs: [check, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: /tmp/digests, pattern: digests-*, merge-multiple: true }
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: wanoo
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: docker.io/${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=v${{ needs.check.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.check.outputs.version }}
+            type=semver,pattern={{major}},value=v${{ needs.check.outputs.version }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=foundry-mcp-gateway
+            org.opencontainers.image.description=MCP server for Foundry VTT
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.source=https://github.com/wanoo/foundry-mcp-gateway
+      - name: Merge per-architecture digests into one manifest
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'docker.io/${{ env.IMAGE }}@sha256:%s ' *)
+      - name: Verify both architectures are there
+        run: |
+          docker buildx imagetools inspect \
+            docker.io/${{ env.IMAGE }}:${{ needs.check.outputs.version }} | tee /tmp/inspect
+          grep -q "linux/amd64" /tmp/inspect && grep -q "linux/arm64" /tmp/inspect
+      - name: Push the README to the Docker Hub page
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: wanoo
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE }}
+          short-description: "MCP server for Foundry VTT — 134 tools, single Rust binary"
+
+  # ─── Release GitHub : notes issues du CHANGELOG + binaires ───────────────
+  release:
+    needs: [check, tag]
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract this version's CHANGELOG section
+        run: |
+          awk -v ver="${{ needs.check.outputs.version }}" '
+            $0 ~ "^## \\[" ver "\\]" { flag=1; next }
+            flag && /^## \[/ { exit }
+            flag { print }
+          ' CHANGELOG.md > NOTES.md
+          test -s NOTES.md || echo "See CHANGELOG.md" > NOTES.md
+          cat NOTES.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check.outputs.version }}
+          body_path: NOTES.md
+
+  binaries:
+    needs: [check, release]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: aarch64-apple-darwin
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: foundry-mcp
+          target: ${{ matrix.target }}
+          archive: $bin-$target
+          checksum: sha256
+          ref: refs/tags/v${{ needs.check.outputs.version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ─── crates.io : Trusted Publishing, aucun jeton stocké ──────────────────
+  crates:
+    needs: [check, tag]
+    runs-on: ubuntu-latest
+    permissions: { id-token: write }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Already published?
+        id: pub
+        run: |
+          v="${{ needs.check.outputs.version }}"
+          if curl -sf "https://crates.io/api/v1/crates/foundry-mcp-gateway/$v" \
+               -H "User-Agent: foundry-mcp-gateway-ci" >/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$v est déjà sur crates.io."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.pub.outputs.skip == 'false'
+      - uses: rust-lang/crates-io-auth-action@v1
+        if: steps.pub.outputs.skip == 'false'
+        id: auth
+      - if: steps.pub.outputs.skip == 'false'
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
