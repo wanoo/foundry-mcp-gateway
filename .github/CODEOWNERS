@@ -2,3 +2,4 @@
 # exigée dans le ruleset : à un seul mainteneur, on ne peut pas approuver sa
 # propre PR — ce serait s'auto-bloquer. À activer quand on sera deux.
 * @wanoo
+
