@@ -111,6 +111,9 @@ jobs:
 
   docker-manifest:
     needs: [check, docker]
+    # `always()` est indispensable : GitHub propage le saut d'un job en amont
+    # (ici `tag`, sauté lors d'une relance) à tout l'aval qui ne s'en protège pas.
+    if: always() && needs.docker.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
