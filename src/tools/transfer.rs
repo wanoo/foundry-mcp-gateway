@@ -7,7 +7,7 @@
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Map, Value, json};
 
-use super::{str_arg, text_response};
+use super::{plural_to_collection, str_arg, text_response};
 use crate::foundry::documents::collection_to_type;
 use crate::mcp::McpState;
 
@@ -194,11 +194,13 @@ async fn copy_assets(state: &McpState, args: &Value) -> Result<Value> {
             )
             .await; // déjà existant = pas une erreur pour nous
     }
-    let (host, base) = crate::foundry::auth::split_host(&src.foundry.hostname());
+    let src_hostname = src.foundry.hostname();
+    let (host, base) = crate::foundry::auth::split_host(&src_hostname);
+    let (http_s, _) = crate::foundry::auth::schemes(&src_hostname);
     let mut uploaded = 0usize;
     let mut failed = Vec::new();
     for (source_path, dest_path) in &missing {
-        let url = format!("https://{host}{base}/{source_path}");
+        let url = format!("{http_s}://{host}{base}/{source_path}");
         let dir = dest_path
             .rsplit_once('/')
             .map(|(d, _)| d.to_string())
@@ -248,7 +250,10 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
     }
     let from = str_arg(args, "from").ok_or_else(|| anyhow!("'from' is required"))?;
     let to = str_arg(args, "to").ok_or_else(|| anyhow!("'to' is required"))?;
-    let collection = str_arg(args, "collection").ok_or_else(|| anyhow!("'collection' required"))?;
+    // « journals » (comme les outils get_*) autant que « journal » (nom interne).
+    let collection = str_arg(args, "collection")
+        .map(|c| plural_to_collection(&c).to_string())
+        .ok_or_else(|| anyhow!("'collection' required"))?;
     if from == to {
         bail!("'from' et 'to' désignent la même instance ('{from}') — rien à transférer");
     }

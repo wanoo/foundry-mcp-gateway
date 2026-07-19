@@ -74,7 +74,9 @@ With Rust installed, locally:
 export MCP_SECRET="a-long-random-string"          # your endpoint: /mcp-<secret>
 export FOUNDRY_CREDENTIALS_JSON='[{
   "_id": "my-world",
-  "hostname": "my-host.com/my-world",             # route prefix supported
+  "hostname": "my-host.com/my-world",             # route prefix supported;
+                                                  # local/dev: "localhost:30000" or
+                                                  # "http://foundry.lan:30000"
   "userid": "AbCdEfGh12345678",
   "password": "the-bot-password"
 }]'

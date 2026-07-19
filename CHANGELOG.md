@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Response shapes** — the contract documented in
 [docs/integrators.md](docs/integrators.md) — only change on a **major** version.
 
+## [1.4.0] — 2026-07-19
+
+*Cross-server migration validated end to end against a real second server
+(Foundry 13.351 in Docker): system installed, world created and launched,
+player accounts recreated, 48 folders + 112 journals + 20 actors + 12 scenes +
+2 tables + 25 macros copied, assets uploaded across servers, `_id`s preserved.*
+
+### Added
+
+- **Plain-HTTP and custom-port instances** — a `hostname` may now carry an
+  explicit scheme (`http://foundry.lan:30000`), and localhost targets default to
+  HTTP. Local/dev Foundry containers were previously unreachable: every URL was
+  hardcoded to `https://`/`wss://`.
+
+### Fixed
+
+- **`copy_documents` rejected `journals`** — its own description advertised the
+  plural, but the code only accepted the internal `journal`. Both work now, as
+  everywhere else.
+- **`admin_create_world` and `admin_install_package`** are no longer untested:
+  both drove the migration above.
+
 ## [1.3.0] — 2026-07-19
 
 ### Added

@@ -76,7 +76,9 @@ Avec Rust installé, en local :
 export MCP_SECRET="une-longue-chaine-aleatoire"    # votre endpoint : /mcp-<secret>
 export FOUNDRY_CREDENTIALS_JSON='[{
   "_id": "mon-monde",
-  "hostname": "mon-hote.com/mon-monde",            # préfixe de route supporté
+  "hostname": "mon-hote.com/mon-monde",            # préfixe de route supporté ;
+                                                   # local : "localhost:30000" ou
+                                                   # "http://foundry.lan:30000"
   "userid": "AbCdEfGh12345678",
   "password": "le-mdp-du-bot"
 }]'

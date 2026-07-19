@@ -109,8 +109,10 @@ pub fn handles(name: &str) -> bool {
 /* ------------------------------------------------------------- plumbing */
 
 fn base_url(state: &McpState) -> String {
-    let (host, base) = split_host(&state.foundry.hostname());
-    format!("https://{host}{base}")
+    let hostname = state.foundry.hostname();
+    let (host, base) = split_host(&hostname);
+    let (http_s, _) = crate::foundry::auth::schemes(&hostname);
+    format!("{http_s}://{host}{base}")
 }
 
 fn http() -> Result<reqwest::Client> {

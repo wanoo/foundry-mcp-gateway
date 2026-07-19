@@ -330,7 +330,8 @@ impl FoundryHandle {
             .ok_or_else(|| anyhow!("Not connected to Foundry server"))?;
         let hostname = self.hostname();
         let (host, base) = super::auth::split_host(&hostname);
-        let url = format!("https://{host}{base}/upload");
+        let (http_s, _) = super::auth::schemes(&hostname);
+        let url = format!("{http_s}://{host}{base}/upload");
         let part = reqwest::multipart::Part::bytes(bytes)
             .file_name(filename.to_string())
             .mime_str(content_type)?;

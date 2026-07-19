@@ -37,7 +37,7 @@ pub const COLLECTIONS: [(&str, &str, &str); 13] = [
 ];
 
 /// pluriel d'outil → nom de collection Foundry.
-fn plural_to_collection(plural: &str) -> &str {
+pub fn plural_to_collection(plural: &str) -> &str {
     if plural == "journals" {
         "journal"
     } else {
