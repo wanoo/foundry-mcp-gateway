@@ -50,18 +50,27 @@ Créer un utilisateur*, ex. `MCP-Bot`, rôle **Gamemaster**, avec mot de passe.
 (Un rôle inférieur fonctionne — Foundry refuse proprement ce qui dépasse ses
 droits — mais écritures, combats et outils de séance échouent alors : la
 panoplie complète exige Gamemaster.)
-Puis récupérez son `_id` (16 caractères) — sans terminal :
+Puis récupérez son `_id` (16 caractères) :
 
-> Ouvrez `view-source:https://VOTRE-HOTE/join` dans votre navigateur (collez-le
-> dans la barre d'adresse), <kbd>Ctrl/Cmd+F</kbd>, cherchez `MCP-Bot` — le
-> `"_id"` juste à côté du nom est ce qu'il vous faut, ex. `AbCdEfGh12345678`.
+> Entrez dans votre monde en tant que MJ, ouvrez la console du navigateur
+> (<kbd>F12</kbd> → *Console*), collez ceci et validez :
+>
+> ```js
+> game.users.getName("MCP-Bot").id
+> ```
+>
+> Elle affiche quelque chose comme `"AbCdEfGh12345678"` : c'est votre `userid`.
 
 <details>
-<summary>À l'aise au terminal ? Une ligne.</summary>
+<summary>Pourquoi pas depuis la page de connexion ?</summary>
 
-```sh
-curl -s https://VOTRE-HOTE/join | grep -o '{"name":"MCP-Bot"[^}]*'
-```
+Parce qu'il n'y est pas. En Foundry v13, `/join` est une coquille de 2 Ko qui
+construit sa liste d'utilisateurs côté navigateur : `view-source` et
+`curl | grep` ne montrent rien — un piège dans lequel ce README est tombé.
+La ligne de console ci-dessus lit la donnée que la page utilise elle-même.
+
+Une fois la passerelle en route, `manage_users` vous liste tous les comptes
+et leurs ids.
 </details>
 
 **2 · Configurez et lancez le serveur.** Trois voies — **choisissez-en une**.
@@ -153,9 +162,11 @@ gagné. Plusieurs mondes ? Plusieurs objets dans le tableau, bascule via
 
 ## 🧙 Ce que votre IA peut faire à votre table
 
-131 outils, organisés comme travaille un MJ. Les outils en lecture seule sont
-annotés (auto-approbables par votre client MCP) ; seules les suppressions sont
-marquées destructives.
+**134 outils**, organisés comme travaille un MJ — 126 en permanence, plus 8 outils
+d'administration qui n'apparaissent que si `FOUNDRY_ADMIN_PASSWORD` est défini.
+50 outils de lecture seule sont annotés comme tels (auto-approbables par votre
+client MCP) ; seules les deux suppressions sont marquées destructives. Pour voir
+ce que votre déploiement expose : `foundry-mcp --dump-tools`.
 
 ### 📖 Préparer — construire et interroger votre monde
 

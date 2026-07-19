@@ -13,8 +13,57 @@ mod tools;
 use anyhow::{Context, Result};
 use tracing::info;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+const USAGE: &str = "\
+foundry-mcp-gateway — MCP server for Foundry VTT
+
+USAGE:
+    foundry-mcp                Run the server (see the environment below)
+    foundry-mcp --dump-tools   Print every exposed tool as JSON, then exit
+    foundry-mcp --version      Print the version, then exit
+    foundry-mcp --help         Print this help
+
+ENVIRONMENT:
+    MCP_SECRET                 Required. Endpoint path becomes /mcp-<secret>
+    FOUNDRY_CREDENTIALS_JSON   Required. [{_id, hostname, userid, password}, …]
+    FOUNDRY_ADMIN_PASSWORD     Optional. Unlocks the admin_* tools
+    FOUNDRY_READONLY           Optional. 1/true/yes: expose read-only tools only
+    FOUNDRY_SYSTEMS            Optional. Restrict game-system modules
+    PORT                       Optional. Defaults to 8080
+";
+
+/// `--dump-tools` : la liste des outils sans aucune connexion Foundry — sert de
+/// source de vérité aux vérifications de doc en CI, et laisse un intégrateur
+/// inspecter l'API sans rien déployer.
+fn dump_tools() -> Result<()> {
+    let handle = foundry::client::spawn(vec![]);
+    let state = mcp::McpState::new(handle, vec![]);
+    let tools = tools::definitions(&state);
+    println!("{}", serde_json::to_string_pretty(&tools)?);
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    match std::env::args().nth(1).as_deref() {
+        Some("--version" | "-V") => {
+            println!("foundry-mcp-gateway {VERSION}");
+            return Ok(());
+        }
+        Some("--help" | "-h") => {
+            print!("{USAGE}");
+            return Ok(());
+        }
+        Some("--dump-tools") => return dump_tools(),
+        Some(other) => {
+            eprintln!("argument inconnu : {other}\n");
+            print!("{USAGE}");
+            std::process::exit(2);
+        }
+        None => {}
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),

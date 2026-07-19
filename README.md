@@ -49,18 +49,26 @@ against your world, from any machine — or free-tier cloud hosting.
 User*, e.g. `MCP-Bot`, role **Gamemaster**, with a password. (A lower role works
 and is safely refused by Foundry for anything it lacks rights for — but writes,
 combat and session tools then fail, so the full toolset needs Gamemaster.) Then grab its 16-char
-`_id` — no terminal needed:
+`_id`:
 
-> Open `view-source:https://YOUR-HOST/join` in your browser (paste it in the
-> address bar), press <kbd>Ctrl/Cmd+F</kbd>, search `MCP-Bot` — the `"_id"` right
-> next to the name is what you want, e.g. `AbCdEfGh12345678`.
+> Enter your world as Gamemaster, open the browser console
+> (<kbd>F12</kbd> → *Console*), paste this and press Enter:
+>
+> ```js
+> game.users.getName("MCP-Bot").id
+> ```
+>
+> It prints something like `"AbCdEfGh12345678"` — that's your `userid`.
 
 <details>
-<summary>Terminal person? One-liner.</summary>
+<summary>Why not read it off the login page?</summary>
 
-```sh
-curl -s https://YOUR-HOST/join | grep -o '{"name":"MCP-Bot"[^}]*'
-```
+Because it isn't there. Foundry v13's `/join` page is a 2 KB shell that builds
+its user list client-side, so `view-source` and `curl | grep` show nothing —
+a trap this README used to fall into. The console line above reads the same
+data the page itself uses.
+
+Once the gateway is running, `manage_users` lists every account and id for you.
 </details>
 
 **2 · Configure & run the server.** Three ways — **pick one**. No Rust on your
@@ -151,8 +159,11 @@ Several worlds? Put several objects in the credentials array and switch with
 
 ## 🧙 What your AI can do at your table
 
-131 tools, organized the way a GM works. Read-only tools are flagged so your MCP
-client can auto-approve them; only deletions are marked destructive.
+**134 tools**, organized the way a GM works — 126 always, plus 8 administration
+tools that appear only when `FOUNDRY_ADMIN_PASSWORD` is set. 50 read-only tools
+are flagged as such so your MCP client can auto-approve them; only the two
+deletions are marked destructive. Check what your own deployment exposes with
+`foundry-mcp --dump-tools`.
 
 ### 📖 Prep — build and query your world
 

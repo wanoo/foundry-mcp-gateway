@@ -10,14 +10,45 @@ descriptions d'outils restent en anglais, c'est ce que lisent les modèles.)*
 
 ```sh
 git clone https://github.com/wanoo/foundry-mcp-gateway && cd foundry-mcp-gateway
-cargo test                       # 22 unit tests, no Foundry needed
+cargo test                       # 23 unit tests, no Foundry needed
+./scripts/check-docs.sh          # docs must match the code (see below)
+foundry-mcp --dump-tools | jq    # the full tool catalogue, no connection needed
+```
 
-# run against YOUR world (create a bot user first — see README):
+Run it against a world:
+
+```sh
 MCP_SECRET=test PORT=8940 \
 FOUNDRY_CREDENTIALS_JSON='[{"_id":"dev","hostname":"…","userid":"…","password":"…"}]' \
 cargo run
 # then: claude mcp add foundry-dev --transport http http://localhost:8940/mcp-test
 ```
+
+### A throwaway Foundry to test against
+
+**Don't develop against a campaign you care about.** `foundry-local/compose.yml`
+in this workspace boots a disposable Foundry in Docker — it's what validated the
+cross-server migration tools. You need a Foundry licence and a presigned release
+URL from your foundryvtt.com profile (it expires in minutes, so start the
+container right after generating it):
+
+```sh
+cd foundry-local
+printf 'FOUNDRYVTT_KEY=…\nFOUNDRY_RELEASE_URL=…\nFOUNDRY_ADMIN_KEY=…\n' > .env
+docker compose up -d             # http://localhost:30000, accept the EULA once
+```
+
+The release archive is cached in `data/`, so later restarts don't need a fresh
+URL. Point the gateway at it with `"hostname": "localhost:30000"` — plain HTTP
+and non-standard ports are supported for exactly this case.
+
+### Docs are checked, not trusted
+
+`./scripts/check-docs.sh` compares what the READMEs claim against what the binary
+actually exposes: tool counts, read-only counts, unit-test count, tools that
+exist but aren't documented, and tools documented but non-existent. It runs in
+CI. This exists because those numbers drifted three times — the READMEs once
+announced 131 *and* 134 tools on the same page.
 
 ## 🎮 Adding a game system
 
@@ -71,6 +102,20 @@ Rules of the road:
 - Names: `<addon>_*` for server-side tools, `client_<addon>_*` for delegated ones.
 - Read-only tools: add them to the `annotations()` list in `src/tools/mod.rs`.
 
+## 📤 Pull requests
+
+- **Commits in English, [Conventional Commits](https://www.conventionalcommits.org/)**:
+  `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `ci:`. Scope welcome
+  (`feat(systems): add pf2e`). Older commits are French and free-form — that
+  changed with the public release, don't imitate them.
+- **Versions are shared with the companion module**: both repositories carry the
+  same number. If you change the command protocol, bump both.
+- One logical change per PR. The template asks how you tested it — answer
+  honestly, "not tested against a real world" is a valid answer that saves the
+  reviewer time.
+- CI must be green: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`,
+  `cargo test`, and `./scripts/check-docs.sh`.
+
 ## ✅ Definition of done
 
 - [ ] `cargo test` green (add tests for any pure logic).
@@ -79,8 +124,9 @@ Rules of the road:
 - [ ] **Validated against a real world** — note the Foundry + system/addon versions
       in your PR description.
 - [ ] README tables updated (EN **and** FR) + the total tool count.
-- [ ] Companion changes: bump `module.json` + `VERSION` in `main.mjs` (the release
-      workflow packs `module.zip`).
+- [ ] `./scripts/check-docs.sh` green (it will tell you which number to fix).
+- [ ] Companion changes: bump `module.json` + `VERSION` in `main.mjs`; releases
+      are automated — pushing a new version number to `main` publishes it.
 
 ## 🌍 Translations
 

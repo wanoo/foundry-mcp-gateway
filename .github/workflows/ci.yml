@@ -5,6 +5,8 @@ on:
     branches: [main, master]
   pull_request:
 
+# Le nom du job `build-and-test` est référencé par le ruleset de la branche
+# principale (required status check) — le renommer bloquerait toutes les PR.
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -22,3 +24,15 @@ jobs:
         run: cargo build --release
       - name: Test
         run: cargo test
+      # Les chiffres de la doc sont vérifiés contre le binaire, pas relus à la
+      # main : ils ont déjà dérivé trois fois.
+      - name: Docs match the code
+        run: ./scripts/check-docs.sh
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
