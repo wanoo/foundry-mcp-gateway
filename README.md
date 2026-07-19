@@ -136,6 +136,22 @@ The image has a built-in `/health` healthcheck. Put HTTPS in front (reverse
 proxy) before exposing it to the internet — the secret rides in the URL.
 </details>
 
+### 📦 Install without building
+
+```sh
+# Docker (amd64 + arm64)
+docker run -d -p 8080:8080 \
+  -e MCP_SECRET="a-long-random-string" \
+  -e FOUNDRY_CREDENTIALS_JSON='[{"_id":"…","hostname":"…","userid":"…","password":"…"}]' \
+  wanoo/foundry-mcp-gateway
+
+# or a prebuilt binary, no compiling
+cargo binstall foundry-mcp-gateway
+
+# or from source
+cargo install foundry-mcp-gateway
+```
+
 **3 · Connect your AI:**
 
 ```sh
