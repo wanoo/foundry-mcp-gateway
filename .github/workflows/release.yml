@@ -22,6 +22,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
       publish: ${{ steps.v.outputs.publish }}
+      needs_tag: ${{ steps.v.outputs.needs_tag }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -30,16 +31,26 @@ jobs:
           version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if git rev-parse "v$version" >/dev/null 2>&1; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::v$version est déjà taguée — rien à publier."
+            echo "needs_tag=false" >> "$GITHUB_OUTPUT"
+            # Un lancement manuel REJOUE la chaîne : c'est ce qui permet de
+            # rattraper une release à moitié publiée (image manquante, etc.).
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::v$version déjà taguée — relance manuelle, on rejoue les publications."
+            else
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::v$version est déjà taguée — rien à publier."
+            fi
           else
+            echo "needs_tag=true" >> "$GITHUB_OUTPUT"
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Nouvelle version détectée : $version"
           fi
 
   tag:
     needs: check
-    if: needs.check.outputs.publish == 'true'
+    # Uniquement si le tag manque : une relance manuelle republie sans retaguer.
+    if: needs.check.outputs.needs_tag == 'true'
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -57,6 +68,7 @@ jobs:
   # 4 min → 30-60 min). Les runners arm64 sont gratuits sur dépôt public.
   docker:
     needs: [check, tag]
+    if: always() && needs.check.outputs.publish == 'true' && needs.tag.result != 'failure'
     strategy:
       fail-fast: false
       matrix:
@@ -85,8 +97,11 @@ jobs:
           outputs: type=image,name=docker.io/${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
+          # Le nom de fichier ne peut pas contenir ':' (refusé par upload-artifact),
+          # et l'étape de fusion rajoute le préfixe elle-même.
           mkdir -p /tmp/digests
-          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
       - uses: actions/upload-artifact@v4
         with:
           name: digests-${{ steps.prep.outputs.pair }}
@@ -141,6 +156,7 @@ jobs:
   # ─── Release GitHub : notes issues du CHANGELOG + binaires ───────────────
   release:
     needs: [check, tag]
+    if: always() && needs.check.outputs.publish == 'true' && needs.tag.result != 'failure'
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -161,6 +177,7 @@ jobs:
 
   binaries:
     needs: [check, release]
+    if: always() && needs.release.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -189,6 +206,7 @@ jobs:
   # ─── crates.io : Trusted Publishing, aucun jeton stocké ──────────────────
   crates:
     needs: [check, tag]
+    if: always() && needs.check.outputs.publish == 'true' && needs.tag.result != 'failure'
     runs-on: ubuntu-latest
     permissions: { id-token: write }
     steps:
