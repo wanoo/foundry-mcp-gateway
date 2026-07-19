@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question, or help getting it running
+    url: https://github.com/wanoo/foundry-mcp-gateway/discussions
+    about: Setup trouble and "how do I…" belong in Discussions — you'll get an answer faster there.
+  - name: Security vulnerability
+    url: https://github.com/wanoo/foundry-mcp-gateway/security/advisories/new
+    about: Report privately. Never open a public issue for a vulnerability.
+  - name: Response shapes (integrators)
+    url: https://github.com/wanoo/foundry-mcp-gateway/blob/main/docs/integrators.md
+    about: The exact JSON each tool returns, for programs calling the gateway directly.
+  - name: Companion module issues
+    url: https://github.com/wanoo/foundry-mcp-gateway-companion/issues
+    about: Anything about the `client_*` tools' browser side belongs in the companion repository.

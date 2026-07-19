@@ -1,0 +1,87 @@
+name: Bug report
+description: Something in the gateway doesn't behave as documented
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. **For a security issue, don't use this form** —
+        see [SECURITY.md](../blob/main/SECURITY.md) and report privately.
+
+  - type: input
+    id: version
+    attributes:
+      label: Gateway version
+      description: Output of `foundry-mcp --version`, or the Docker image tag.
+      placeholder: "1.5.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options:
+        - Docker image
+        - Release binary
+        - Built from source (cargo)
+        - Clever Cloud
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: foundry
+    attributes:
+      label: Foundry VTT version
+      placeholder: "13.351"
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: Game system
+      description: Only matters for system-specific tools.
+      placeholder: "starwarsffg 2.0.3"
+
+  - type: input
+    id: companion
+    attributes:
+      label: Companion module version
+      description: "Output of the `client_status` tool. Leave blank if not installed — but note that every `client_*` tool needs it, and needs an awake GM browser tab."
+      placeholder: "1.5.0"
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you expected, and what you got instead. Name the tool if there is one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "Server output with `RUST_LOG=debug`. Strip your MCP_SECRET, passwords and tokens first."
+      render: shell
+
+  - type: checkboxes
+    id: coc
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow this project's [Code of Conduct](../blob/main/CODE_OF_CONDUCT.md)
+          required: true

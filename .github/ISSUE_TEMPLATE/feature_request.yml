@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a tool, a game system, or an addon integration
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: scope
+    attributes:
+      label: What kind?
+      options:
+        - A new MCP tool
+        - Support for a game system
+        - An addon integration (Foundry module)
+        - Transport / protocol
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What can't you do today?
+      description: Describe the situation at your table, not the solution. That's what tells us whether an existing tool already covers it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would it look like?
+      description: Tool name, arguments, what it returns — a rough sketch is fine.
+
+  - type: checkboxes
+    id: browser
+    attributes:
+      label: Does it need the browser?
+      description: "Server-side tools only reach *documents*. Anything needing the live client API (canvas, dialogs, a module's runtime API) also needs a companion handler — see CONTRIBUTING."
+      options:
+        - label: I think this needs the companion module (client-side API)
+        - label: The data lives in documents/flags, so the server alone should do
+
+  - type: checkboxes
+    id: coc
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I agree to follow this project's [Code of Conduct](../blob/main/CODE_OF_CONDUCT.md)
+          required: true
