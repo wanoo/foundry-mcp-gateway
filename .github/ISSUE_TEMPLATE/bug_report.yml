@@ -75,7 +75,7 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: "Server output with `RUST_LOG=debug`. Strip your MCP_SECRET, passwords and tokens first."
+      description: "Server output with `RUST_LOG=debug`. Strip your MCP token, passwords and keys first."
       render: shell
 
   - type: checkboxes

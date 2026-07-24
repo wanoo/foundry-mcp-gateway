@@ -1,7 +1,10 @@
 //! Couche MCP maison : JSON-RPC 2.0 + sessions + notifications.
 //! Implémentée directement sur la spec (2025-03-26) — pas de SDK, pas de dérive.
 
+pub mod auth;
 pub mod http;
+pub mod prompts;
+pub mod resources;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -22,6 +25,76 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub struct Session {
     /// Canal des notifications serveur → client (flux SSE GET).
     pub notify: mpsc::Sender<Value>,
+    /// Dernière activité, en millisecondes depuis la création de l'état.
+    /// Un AtomicU64 plutôt qu'un Mutex : c'est touché à chaque requête.
+    pub last_seen: std::sync::atomic::AtomicU64,
+}
+
+/// Une session sans activité ni flux SSE ouvert est abandonnée au-delà de ce
+/// délai. Large exprès : un MJ qui laisse son client MCP ouvert entre deux
+/// scènes ne doit jamais voir sa session coupée sous lui.
+const SESSION_TTL_MS: u64 = 30 * 60_000;
+/// Un récepteur SSE que personne ne vient chercher : le client a fait
+/// `initialize` puis n'a jamais ouvert le flux (ou est mort en route).
+const PENDING_RX_TTL_MS: u64 = 5 * 60_000;
+/// Garde-fou de pointe : le TTL borne la fuite dans le temps, ce plafond la
+/// borne en volume si quelqu'un boucle sur `initialize`.
+pub const MAX_SESSIONS: usize = 1024;
+
+/// Récepteurs de notifications garés entre `initialize` (POST) et l'ouverture
+/// du flux (GET), avec l'instant où ils ont été garés — c'est lui qui permet
+/// au balayage de récupérer ceux que personne n'est jamais venu chercher.
+pub type PendingRx = Arc<Mutex<HashMap<String, (mpsc::Receiver<Value>, u64)>>>;
+
+/// Horloge monotone du processus, en millisecondes.
+pub fn now_ms() -> u64 {
+    static START: std::sync::LazyLock<std::time::Instant> =
+        std::sync::LazyLock::new(std::time::Instant::now);
+    START.elapsed().as_millis() as u64
+}
+
+/// Réclame les sessions mortes.
+///
+/// Sans ça, une session ne disparaissait qu'avec un DELETE explicite : un
+/// client qui se déconnecte brutalement — le cas courant — laissait derrière
+/// lui un `Receiver(64)` et un `Arc<Session>` pour la vie du processus. Sur un
+/// service qui tourne des semaines, la croissance est monotone.
+///
+/// Deux critères, parce qu'ils attrapent deux fuites différentes :
+///   · `notify.is_closed()` — le client a fermé son flux SSE, la session est
+///     morte tout de suite, sans attendre le TTL ;
+///   · le TTL — le client n'a jamais ouvert de flux et n'a jamais dit au revoir.
+///
+/// ⚠️ Lancée depuis `main`, jamais depuis `router()` : `--dump-tools` construit
+/// un état et ne doit pas se retrouver avec une tâche de fond.
+pub fn spawn_session_reaper(state: McpState) {
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            tick.tick().await;
+            let now = now_ms();
+            let mut sessions = state.sessions.lock().await;
+            let before = sessions.len();
+            sessions.retain(|_, s| {
+                !s.notify.is_closed()
+                    && now.saturating_sub(s.last_seen.load(std::sync::atomic::Ordering::Relaxed))
+                        < SESSION_TTL_MS
+            });
+            let dropped = before - sessions.len();
+            let alive: std::collections::HashSet<String> = sessions.keys().cloned().collect();
+            drop(sessions);
+
+            let mut pending = state.pending_rx.lock().await;
+            pending.retain(|sid, (_, born)| {
+                alive.contains(sid) && now.saturating_sub(*born) < PENDING_RX_TTL_MS
+            });
+            drop(pending);
+
+            if dropped > 0 {
+                tracing::debug!(dropped, "sessions MCP réclamées");
+            }
+        }
+    });
 }
 
 #[derive(Clone)]
@@ -40,6 +113,12 @@ pub struct McpState {
     pub credentials: Arc<Vec<Credential>>,
     /// Connexions vivantes, une par instance utilisée — ouvertes à la demande.
     pub pool: Arc<Mutex<HashMap<String, FoundryHandle>>>,
+    /// Signe les commandes envoyées au compagnon (voir foundry::signing).
+    pub signer: Arc<crate::foundry::signing::CommandSigner>,
+    /// Récepteurs SSE en attente d'un GET, avec l'instant de création.
+    /// Dans l'état et non dans un `static` : un global rendait le transport
+    /// intestable et faisait fuiter les sessions entre deux instances.
+    pub pending_rx: PendingRx,
     /// Instance visée par défaut quand un appel ne précise pas `instance`.
     pub active: Arc<Mutex<String>>,
 }
@@ -68,6 +147,16 @@ impl McpState {
             credentials: Arc::new(credentials),
             pool: Arc::new(Mutex::new(pool)),
             active: Arc::new(Mutex::new(first)),
+            // Une clé éphémère si l'env n'en fournit pas : la passerelle
+            // démarre quand même (--dump-tools, essais), mais le compagnon
+            // refusera ses commandes dangereuses tant que la clé publique
+            // inscrite dans le monde ne correspond pas.
+            signer: Arc::new(
+                crate::foundry::signing::CommandSigner::from_env()
+                    .map(|(s, _)| s)
+                    .unwrap_or_else(|_| crate::foundry::signing::CommandSigner::generate()),
+            ),
+            pending_rx: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -166,7 +255,7 @@ pub async fn handle_message(state: &McpState, message: &Value) -> Option<Value> 
         }
         "resources/list" => {
             let cursor = params.get("cursor").and_then(Value::as_str);
-            tools::resources_list(state, cursor)
+            resources::resources_list(state, cursor)
                 .await
                 .map_err(|e| format!("{e:#}"))
         }
@@ -175,7 +264,7 @@ pub async fn handle_message(state: &McpState, message: &Value) -> Option<Value> 
                 .get("uri")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            tools::resources_read(state, uri)
+            resources::resources_read(state, uri)
                 .await
                 .map_err(|e| format!("{e:#}"))
         }
@@ -191,14 +280,14 @@ pub async fn handle_message(state: &McpState, message: &Value) -> Option<Value> 
             }
             Ok(json!({}))
         }
-        "prompts/list" => Ok(json!({ "prompts": tools::prompt_definitions() })),
+        "prompts/list" => Ok(json!({ "prompts": prompts::prompt_definitions() })),
         "prompts/get" => {
             let name = params
                 .get("name")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
-            tools::prompts_get(state, name, &args)
+            prompts::prompts_get(state, name, &args)
                 .await
                 .map_err(|e| format!("{e:#}"))
         }
@@ -217,10 +306,22 @@ pub fn spawn_event_bridge(state: McpState) {
     let mut rx = state.foundry.subscribe_events();
     tokio::spawn(async move {
         loop {
-            let Ok(event) = rx.recv().await else {
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                rx = state.foundry.subscribe_events();
-                continue;
+            let event = match rx.recv().await {
+                Ok(e) => e,
+                // Rafale : le pont a pris du retard sur le buffer de 256. On a
+                // perdu n notifications, ce n'est pas une erreur de canal —
+                // avant, ce cas faisait dormir le pont une seconde et le
+                // réamorçait, c'est-à-dire qu'il décrochait précisément quand
+                // il y avait du trafic (un import en masse, par exemple).
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!(skipped = n, "pont d'événements en retard");
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    rx = state.foundry.subscribe_events();
+                    continue;
+                }
             };
             let first = event.args.first();
             let mut data = json!({ "seq": event.seq, "event": event.event });

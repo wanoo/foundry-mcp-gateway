@@ -36,19 +36,19 @@ struct Shared {
     ack_seq: AtomicU64,
     event_seq: AtomicU64,
     pending: Mutex<HashMap<u64, oneshot::Sender<Vec<Value>>>>,
-    events: Mutex<Vec<BufferedEvent>>,
+    events: Mutex<std::collections::VecDeque<BufferedEvent>>,
     outgoing: mpsc::Sender<String>,
     event_tx: broadcast::Sender<BufferedEvent>,
     generation: Mutex<Option<u32>>,
+    /// Id du monde servi (`server.world` de /api/status), mis en cache au
+    /// premier besoin. Sert à lier une commande signée au monde qui la reçoit :
+    /// le compagnon le compare à son propre `game.world.id`.
+    world_id: Mutex<Option<String>>,
     user_id: Mutex<Option<String>>,
     session_id: Mutex<Option<String>>,
     credentials: Vec<Credential>,
     active_index: std::sync::atomic::AtomicUsize,
 }
-
-/// Sentinelle interne : force la fermeture de la connexion (changement
-/// d'instance) — jamais envoyée sur le réseau.
-const RECONNECT_SENTINEL: &str = "\u{1}RECONNECT";
 
 #[derive(Clone)]
 pub struct FoundryHandle {
@@ -96,6 +96,23 @@ impl FoundryHandle {
     }
     pub async fn generation(&self) -> Option<u32> {
         *self.shared.generation.lock().await
+    }
+
+    /// Id du monde servi, mis en cache après le premier appel.
+    ///
+    /// Lu depuis `server.world` de /api/status — la seule source légère : le
+    /// dump `request_world()` pèse ~18 Mo, impensable à chaque commande. Le
+    /// compagnon compare cette valeur à son propre `game.world.id`, ce qui
+    /// empêche de rejouer dans un monde une commande signée pour un autre.
+    pub async fn world_id(&self) -> Option<String> {
+        if let Some(w) = self.shared.world_id.lock().await.clone() {
+            return Some(w);
+        }
+        let hostname = self.hostname().to_string();
+        let status = super::auth_status(&self.http, &hostname).await?;
+        let world = status.get("world").and_then(Value::as_str)?.to_string();
+        *self.shared.world_id.lock().await = Some(world.clone());
+        Some(world)
     }
     pub fn event_seq(&self) -> u64 {
         self.shared.event_seq.load(Ordering::SeqCst)
@@ -373,7 +390,13 @@ impl FoundryHandle {
             }
         }
         let mut rx = self.subscribe_events();
-        let deadline = tokio::time::Instant::now() + timeout;
+        // checked_add : ce Duration peut venir d'un argument d'outil, et
+        // `Instant + Duration` PANIQUE au débordement au lieu de saturer.
+        // Les appelants bornent déjà, ceci est la ceinture de sécurité du
+        // point de passage commun.
+        let deadline = tokio::time::Instant::now()
+            .checked_add(timeout)
+            .unwrap_or_else(|| tokio::time::Instant::now() + std::time::Duration::from_secs(3600));
         loop {
             match tokio::time::timeout_at(deadline, rx.recv()).await {
                 Ok(Ok(e)) => {
@@ -381,7 +404,15 @@ impl FoundryHandle {
                         return Some(e);
                     }
                 }
-                Ok(Err(_)) => rx = self.subscribe_events(),
+                // Lagged n'est PAS une fermeture : c'est une rafale qui a
+                // débordé le buffer de 256. On continue avec le même
+                // récepteur — l'événement attendu a pu passer dans le trou,
+                // mais le timeout couvre déjà ce cas et se réabonner ne le
+                // rattraperait pas davantage.
+                Ok(Err(broadcast::error::RecvError::Lagged(n))) => {
+                    warn!(skipped = n, "événements manqués en attendant une réponse");
+                }
+                Ok(Err(broadcast::error::RecvError::Closed)) => rx = self.subscribe_events(),
                 Err(_) => return None,
             }
         }
@@ -398,10 +429,11 @@ pub fn spawn(credentials: Vec<Credential>) -> FoundryHandle {
         ack_seq: AtomicU64::new(1),
         event_seq: AtomicU64::new(0),
         pending: Mutex::new(HashMap::new()),
-        events: Mutex::new(Vec::new()),
+        events: Mutex::new(std::collections::VecDeque::new()),
         outgoing: out_tx,
         event_tx,
         generation: Mutex::new(None),
+        world_id: Mutex::new(None),
         user_id: Mutex::new(None),
         session_id: Mutex::new(None),
         credentials,
@@ -434,6 +466,18 @@ async fn run_loop(shared: Arc<Shared>, http: reqwest::Client, mut out_rx: mpsc::
         shared.connected.store(false, Ordering::SeqCst);
         // abandonner les acks en attente (les requêtes échouent explicitement)
         shared.pending.lock().await.clear();
+        // …ET vider les trames encore en file d'émission. Sans ça, une écriture
+        // dont on vient d'abandonner l'ack juste au-dessus repartait quand même
+        // sur la NOUVELLE socket : l'appelant voyait un échec, réessayait, et
+        // le monde encaissait le doublon. Le Sender vit dans Shared, donc
+        // try_recv ne rend jamais Disconnected — pas de boucle infinie.
+        let mut dropped = 0usize;
+        while out_rx.try_recv().is_ok() {
+            dropped += 1;
+        }
+        if dropped > 0 {
+            warn!(dropped, "trames sortantes abandonnées à la reconnexion");
+        }
         tokio::time::sleep(delay).await;
         delay = (delay * 2).min(std::time::Duration::from_secs(60));
     }
@@ -479,9 +523,6 @@ async fn connect_once(
     loop {
         tokio::select! {
             Some(frame) = out_rx.recv() => {
-                if frame == RECONNECT_SENTINEL {
-                    bail!("reconnexion demandée (changement d'instance)");
-                }
                 sink.send(Message::Text(frame.into())).await.context("envoi WS")?;
             }
             msg = stream.next() => {
@@ -538,9 +579,10 @@ async fn record_event(shared: &Arc<Shared>, event: String, mut args: Vec<Value>)
     let seq = shared.event_seq.fetch_add(1, Ordering::SeqCst) + 1;
     let entry = BufferedEvent { seq, event, args };
     let mut buf = shared.events.lock().await;
-    buf.push(entry.clone());
+    // VecDeque : `Vec::remove(0)` recopiait les 300 entrées à chaque événement.
+    buf.push_back(entry.clone());
     if buf.len() > EVENT_BUFFER_MAX {
-        buf.remove(0);
+        buf.pop_front();
     }
     drop(buf);
     let _ = shared.event_tx.send(entry);

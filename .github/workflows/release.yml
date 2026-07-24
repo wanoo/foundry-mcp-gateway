@@ -36,15 +36,15 @@ jobs:
             # rattraper une release à moitié publiée (image manquante, etc.).
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "publish=true" >> "$GITHUB_OUTPUT"
-              echo "::notice::v$version déjà taguée — relance manuelle, on rejoue les publications."
+              echo "::notice::v$version is already tagged — manual re-run, replaying the publications."
             else
               echo "publish=false" >> "$GITHUB_OUTPUT"
-              echo "::notice::v$version est déjà taguée — rien à publier."
+              echo "::notice::v$version is already tagged — nothing to publish."
             fi
           else
             echo "needs_tag=true" >> "$GITHUB_OUTPUT"
             echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Nouvelle version détectée : $version"
+            echo "::notice::New version detected: $version"
           fi
 
   tag:
@@ -68,7 +68,13 @@ jobs:
   # 4 min → 30-60 min). Les runners arm64 sont gratuits sur dépôt public.
   docker:
     needs: [check, tag]
-    if: always() && needs.check.outputs.publish == 'true' && needs.tag.result != 'failure'
+    # Publications liées aux comptes du dépôt amont (Docker Hub, crates.io) :
+    # sur un fork elles échoueraient faute de secrets. On les saute plutôt que
+    # de laisser la CI d'un fork rouge en permanence. tag/release/binaries, eux,
+    # restent actifs : un fork peut légitimement publier ses propres binaires.
+    if: >-
+      github.repository == 'wanoo/foundry-mcp-gateway'
+      && always() && needs.check.outputs.publish == 'true' && needs.tag.result != 'failure'
     strategy:
       fail-fast: false
       matrix:
@@ -113,7 +119,13 @@ jobs:
     needs: [check, docker]
     # `always()` est indispensable : GitHub propage le saut d'un job en amont
     # (ici `tag`, sauté lors d'une relance) à tout l'aval qui ne s'en protège pas.
-    if: always() && needs.docker.result == 'success'
+    # Publications liées aux comptes du dépôt amont (Docker Hub, crates.io) :
+    # sur un fork elles échoueraient faute de secrets. On les saute plutôt que
+    # de laisser la CI d'un fork rouge en permanence. tag/release/binaries, eux,
+    # restent actifs : un fork peut légitimement publier ses propres binaires.
+    if: >-
+      github.repository == 'wanoo/foundry-mcp-gateway'
+      && always() && needs.docker.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
@@ -209,7 +221,13 @@ jobs:
   # ─── crates.io : Trusted Publishing, aucun jeton stocké ──────────────────
   crates:
     needs: [check, tag]
-    if: always() && needs.check.outputs.publish == 'true' && needs.tag.result != 'failure'
+    # Publications liées aux comptes du dépôt amont (Docker Hub, crates.io) :
+    # sur un fork elles échoueraient faute de secrets. On les saute plutôt que
+    # de laisser la CI d'un fork rouge en permanence. tag/release/binaries, eux,
+    # restent actifs : un fork peut légitimement publier ses propres binaires.
+    if: >-
+      github.repository == 'wanoo/foundry-mcp-gateway'
+      && always() && needs.check.outputs.publish == 'true' && needs.tag.result != 'failure'
     runs-on: ubuntu-latest
     permissions: { id-token: write }
     steps:
@@ -221,7 +239,7 @@ jobs:
           if curl -sf "https://crates.io/api/v1/crates/foundry-mcp-gateway/$v" \
                -H "User-Agent: foundry-mcp-gateway-ci" >/dev/null; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::$v est déjà sur crates.io."
+            echo "::notice::$v is already on crates.io."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi

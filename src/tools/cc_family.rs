@@ -9,8 +9,8 @@
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
-use super::companion::call_companion;
-use super::{str_arg, text_response};
+use super::companion::{call_companion, cmd_for};
+use super::{ToolDef, carry, str_arg, text_response};
 use crate::foundry::documents::get_path;
 use crate::mcp::McpState;
 
@@ -43,8 +43,17 @@ fn data_defaults(cc_type: &str) -> Value {
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
+/// Construites une fois : `handles` est appelé pour chaque module à chaque
+/// dispatch, et rebâtir les schémas json! à chaque fois coûtait une
+/// allocation par outil pour une simple question d'appartenance.
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+fn build_definitions() -> Vec<ToolDef> {
     vec![
         ("cc_list_sheets",
          "List Campaign Codex sheets (type/tag/name filters), light index with link counts.",
@@ -325,7 +334,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 .unwrap_or(false);
             let r = call_companion(
                 state,
-                "cc_convert",
+                cmd_for(name),
                 json!({ "uuid": uuid, "type": cc_type, "pagesToSeparateSheets": pages }),
                 None,
                 30,
@@ -334,7 +343,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             Ok(text_response(&r))
         }
         "client_cc_export_obsidian" => {
-            let r = call_companion(state, "cc_export_obsidian", json!({}), None, 60).await?;
+            let r = call_companion(state, cmd_for(name), json!({}), None, 60).await?;
             Ok(text_response(&r))
         }
         "client_cc_open_toc" => {
@@ -342,7 +351,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(t) = str_arg(args, "tab") {
                 a["tab"] = json!(t);
             }
-            let r = call_companion(state, "cc_open_toc", a, None, 10).await?;
+            let r = call_companion(state, cmd_for(name), a, None, 10).await?;
             Ok(text_response(&r))
         }
 
@@ -416,7 +425,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(f) = args.get("filters") {
                 a["filters"] = f.clone();
             }
-            let r = call_companion(state, "al_open", a, None, 10).await?;
+            let r = call_companion(state, cmd_for(name), a, None, 10).await?;
             Ok(text_response(&r))
         }
 
@@ -505,19 +514,15 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         }
         "client_mc_set_time" => {
             let mut a = json!({});
-            for k in ["world_time", "advance_seconds"] {
-                if let Some(v) = args.get(k) {
-                    a[k] = v.clone();
-                }
-            }
+            carry(args, &["world_time", "advance_seconds"], &mut a);
             if let Some(m) = str_arg(args, "mode") {
                 a["mode"] = json!(m);
             }
-            let r = call_companion(state, "mc_set_time", a, None, 10).await?;
+            let r = call_companion(state, cmd_for(name), a, None, 10).await?;
             Ok(text_response(&r))
         }
         "client_mc_open" => {
-            let r = call_companion(state, "mc_open", json!({}), None, 10).await?;
+            let r = call_companion(state, cmd_for(name), json!({}), None, 10).await?;
             Ok(text_response(&r))
         }
 

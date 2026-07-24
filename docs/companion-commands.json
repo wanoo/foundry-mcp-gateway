@@ -1,0 +1,182 @@
+[
+  {
+    "cmd": "ping_module",
+    "delivery": "unique",
+    "tool": "client_status"
+  },
+  {
+    "cmd": "run_macro",
+    "delivery": "unique",
+    "tool": "client_run_macro"
+  },
+  {
+    "cmd": "run_script",
+    "delivery": "unique",
+    "tool": "client_run_script"
+  },
+  {
+    "cmd": "roll_pool_native",
+    "delivery": "unique",
+    "tool": "client_roll_pool_native"
+  },
+  {
+    "cmd": "pan",
+    "delivery": "scene",
+    "tool": "client_pan_camera"
+  },
+  {
+    "cmd": "ping_at",
+    "delivery": "scene",
+    "tool": "client_ping"
+  },
+  {
+    "cmd": "play_sound",
+    "delivery": "scene",
+    "tool": "client_play_sound"
+  },
+  {
+    "cmd": "notify",
+    "delivery": "scene",
+    "tool": "client_notify"
+  },
+  {
+    "cmd": "show_document",
+    "delivery": "scene",
+    "tool": "client_show_document"
+  },
+  {
+    "cmd": "play_effect",
+    "delivery": "unique",
+    "tool": "client_play_effect"
+  },
+  {
+    "cmd": "get_client_state",
+    "delivery": "unique",
+    "tool": "client_get_state"
+  },
+  {
+    "cmd": "ask",
+    "delivery": "addressed",
+    "tool": "client_ask"
+  },
+  {
+    "cmd": "roll_formula",
+    "delivery": "unique",
+    "tool": "client_roll_formula"
+  },
+  {
+    "cmd": "select",
+    "delivery": "unique",
+    "tool": "client_select"
+  },
+  {
+    "cmd": "target",
+    "delivery": "unique",
+    "tool": "client_target"
+  },
+  {
+    "cmd": "fog",
+    "delivery": "unique",
+    "tool": "client_fog"
+  },
+  {
+    "cmd": "weather",
+    "delivery": "unique",
+    "tool": "client_weather"
+  },
+  {
+    "cmd": "weather_types",
+    "delivery": "unique",
+    "tool": "client_weather_types"
+  },
+  {
+    "cmd": "token_fx",
+    "delivery": "unique",
+    "tool": "client_token_fx"
+  },
+  {
+    "cmd": "token_fx_presets",
+    "delivery": "unique",
+    "tool": "client_token_fx_presets"
+  },
+  {
+    "cmd": "effect_catalog",
+    "delivery": "unique",
+    "tool": "client_effect_catalog"
+  },
+  {
+    "cmd": "get_derived",
+    "delivery": "unique",
+    "tool": "client_get_derived"
+  },
+  {
+    "cmd": "enrich",
+    "delivery": "unique",
+    "tool": "client_enrich"
+  },
+  {
+    "cmd": "search",
+    "delivery": "unique",
+    "tool": "client_search"
+  },
+  {
+    "cmd": "capture",
+    "delivery": "unique",
+    "tool": "client_capture"
+  },
+  {
+    "cmd": "babele",
+    "delivery": "unique",
+    "tool": "client_babele"
+  },
+  {
+    "cmd": "scene_report",
+    "delivery": "unique",
+    "tool": "client_scene_report"
+  },
+  {
+    "cmd": "cc_convert",
+    "delivery": "unique",
+    "tool": "client_cc_convert"
+  },
+  {
+    "cmd": "cc_export_obsidian",
+    "delivery": "unique",
+    "tool": "client_cc_export_obsidian"
+  },
+  {
+    "cmd": "cc_open_toc",
+    "delivery": "unique",
+    "tool": "client_cc_open_toc"
+  },
+  {
+    "cmd": "al_open",
+    "delivery": "unique",
+    "tool": "client_al_open"
+  },
+  {
+    "cmd": "mc_set_time",
+    "delivery": "unique",
+    "tool": "client_mc_set_time"
+  },
+  {
+    "cmd": "mc_open",
+    "delivery": "unique",
+    "tool": "client_mc_open"
+  },
+  {
+    "cmd": "mat_trigger",
+    "delivery": "unique",
+    "tool": "client_mat_trigger"
+  },
+  {
+    "cmd": "seq_between",
+    "delivery": "unique",
+    "tool": "client_seq_between"
+  },
+  {
+    "cmd": "seq_sound",
+    "delivery": "unique",
+    "tool": "client_seq_sound"
+  }
+]

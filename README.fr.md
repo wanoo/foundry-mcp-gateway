@@ -8,7 +8,7 @@
 
 Un serveur [MCP](https://modelcontextprotocol.io) indépendant pour [Foundry VTT](https://foundryvtt.com) —
 un petit binaire Rust qui se connecte à votre monde *comme un joueur* et offre à votre IA
-**134 outils** pour préparer, animer et mettre en scène vos parties.
+**135 outils** pour préparer, animer et mettre en scène vos parties.
 
 [![Rust](https://img.shields.io/badge/Rust-un%20seul%20binaire-orange?logo=rust)](https://www.rust-lang.org)
 [![Foundry](https://img.shields.io/badge/Foundry%20VTT-v13%20%7C%20v14-ff6400)](https://foundryvtt.com)
@@ -39,13 +39,30 @@ Il tourne 24h/24 contre votre monde, depuis n'importe quelle machine.
 
 ## 🚀 Démarrage rapide
 
+> **Vous montez depuis la 1.5 ?** `MCP_SECRET` n'existe plus. Lancez
+> `foundry-mcp --generate-mcp-key`, posez `MCP_ROOT_PRIVATE_KEY`, puis
+> `foundry-mcp --mint-token <nom>` et pointez votre client sur `/mcp-<token>`.
+> Un jeton expire, peut être restreint en lecture seule, et se révoque seul —
+> ce qu'un secret partagé ne savait pas faire.
+
+
 **Avant de commencer**, il vous faut :
 
-- un monde Foundry **joignable depuis internet en HTTPS** (hébergeur, ou votre
-  serveur avec un domaine — un Foundry qui ne vit que sur `localhost` est
-  inatteignable pour une passerelle hébergée) ;
+- un monde Foundry que la passerelle puisse joindre. Deux cas, et le plus
+  simple l'est davantage qu'il n'y paraît :
+  - **même machine ou même réseau local** — `localhost:30000` fonctionne tel
+    quel, en HTTP simple, sur n'importe quel port. Un Raspberry Pi, un NAS ou
+    une machine de homelab qui fait tourner Foundry et la passerelle n'a besoin
+    de rien d'autre ;
+  - **passerelle hébergée ailleurs** (cloud, offre gratuite) — là, le monde
+    doit être joignable depuis internet en HTTPS, c'est le seul moyen pour une
+    passerelle distante de s'y connecter ;
 - un accès Gamemaster ;
 - une dizaine de minutes.
+
+**Aucune chaîne Rust nécessaire.** Une image est publiée pour **amd64 et
+arm64** : `docker run wanoo/foundry-mcp-gateway` marche sur un Raspberry Pi ou
+un NAS exactement comme sur un serveur — voir la section Docker plus bas.
 
 **1 · Créez un utilisateur bot dans Foundry** — en MJ : *Configurer les joueurs →
 Créer un utilisateur*, ex. `MCP-Bot`, rôle **Gamemaster**, avec mot de passe.
@@ -77,14 +94,14 @@ et leurs ids.
 
 **2 · Configurez et lancez le serveur.** Trois voies — **choisissez-en une**.
 Pas de Rust sur votre machine ? ☁️ Clever Cloud ou 🐳 Docker ci-dessous
-construisent tout pour vous. Deux réglages comptent partout : `MCP_SECRET`
+construisent tout pour vous. Deux réglages comptent partout : `MCP_ROOT_PRIVATE_KEY`
 (long et aléatoire — c'est lui qui protège votre monde) et
 `FOUNDRY_CREDENTIALS_JSON` (qui est le bot, où).
 
 Avec Rust installé, en local :
 
 ```sh
-export MCP_SECRET="une-longue-chaine-aleatoire"    # votre endpoint : /mcp-<secret>
+export MCP_ROOT_PRIVATE_KEY="…"                    # donnée par --generate-mcp-key
 export FOUNDRY_CREDENTIALS_JSON='[{
   "_id": "mon-monde",
   "hostname": "mon-hote.com/mon-monde",            # préfixe de route supporté ;
@@ -103,7 +120,7 @@ cargo run --release                                 # binaire : target/release/f
 
 ```sh
 clever create --type rust foundry-mcp-gateway
-clever env set MCP_SECRET "une-longue-chaine-aleatoire"
+clever env set MCP_ROOT_PRIVATE_KEY "…"            # donnée par --generate-mcp-key
 clever env set FOUNDRY_CREDENTIALS_JSON '[{"_id":"…","hostname":"…","userid":"…","password":"…"}]'
 clever env set CC_RUST_BIN foundry-mcp
 clever deploy
@@ -116,7 +133,7 @@ clever deploy
 ```sh
 docker build -t foundry-mcp-gateway .
 docker run -d --name foundry-mcp -p 8080:8080 \
-  -e MCP_SECRET="une-longue-chaine-aleatoire" \
+  -e MCP_ROOT_PRIVATE_KEY="…" \
   -e FOUNDRY_CREDENTIALS_JSON='[{"_id":"…","hostname":"…","userid":"…","password":"…"}]' \
   foundry-mcp-gateway
 ```
@@ -129,7 +146,7 @@ services:
     build: .
     ports: ["8080:8080"]
     environment:
-      MCP_SECRET: "une-longue-chaine-aleatoire"
+      MCP_ROOT_PRIVATE_KEY: "…"
       FOUNDRY_CREDENTIALS_JSON: '[{"_id":"…","hostname":"…","userid":"…","password":"…"}]'
       # FOUNDRY_ADMIN_PASSWORD: "…"
     restart: unless-stopped
@@ -144,7 +161,7 @@ proxy) avant de l'exposer sur internet — le secret voyage dans l'URL.
 ```sh
 # Docker (amd64 + arm64)
 docker run -d -p 8080:8080 \
-  -e MCP_SECRET="une-longue-chaine-aleatoire" \
+  -e MCP_ROOT_PRIVATE_KEY="…" \
   -e FOUNDRY_CREDENTIALS_JSON='[{"_id":"…","hostname":"…","userid":"…","password":"…"}]' \
   wanoo/foundry-mcp-gateway
 
@@ -180,9 +197,9 @@ gagné. Plusieurs mondes ? Plusieurs objets dans le tableau, bascule via
 
 ## 🧙 Ce que votre IA peut faire à votre table
 
-**134 outils**, organisés comme travaille un MJ — 126 en permanence, plus 8 outils
+**135 outils**, organisés comme travaille un MJ — 127 en permanence, plus 8 outils
 d'administration qui n'apparaissent que si `FOUNDRY_ADMIN_PASSWORD` est défini.
-50 outils de lecture seule sont annotés comme tels (auto-approbables par votre
+58 outils de lecture seule sont annotés comme tels (auto-approbables par votre
 client MCP) ; seules les deux suppressions sont marquées destructives. Pour voir
 ce que votre déploiement expose : `foundry-mcp --dump-tools`.
 
@@ -196,6 +213,7 @@ ce que votre déploiement expose : `foundry-mcp --dump-tools`.
 | `list_compendium_packs` `get_pack_documents` `import_from_compendium` `create_compendium` `delete_compendium` | Le cycle compendium complet |
 | `browse_files` `create_directory` `upload_file` | Fichiers — uploadez cartes et illustrations par URL ou base64 |
 | `get_world` `ping` `get_setting` `set_setting` `show_credentials` `choose_foundry_instance` | Métadonnées, santé, réglages, multi-mondes |
+| `companion_trust_key` | Installe la clé de signature de la passerelle dans le monde, pour que le compagnon accepte ses commandes |
 
 ### 🎬 Animer — la télécommande du MJ
 
@@ -336,7 +354,7 @@ Le protocole socket n'atteint que des *documents*. Tout ce qui est marqué
 *(compagnon)* ci-dessus demande
 **[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)** —
 un petit module Foundry dans le navigateur du MJ, qui exécute ce que le serveur lui
-délègue : 35 handlers derrière les outils `client_*`.
+délègue : 36 handlers derrière les outils `client_*`.
 
 - Optionnel : sans lui, les `client_*` expirent avec un message clair ; tout le reste marche.
 - Installation : *Modules → Installer → URL du manifest* :
@@ -367,7 +385,7 @@ flowchart LR
   listings sur index BDD ; jamais de dump complet (hors `get_world`).
 - **Auto-réparant** — reconnexion infinie à backoff ; survit aux redémarrages du
   monde et même à une migration v13→v14 en vol.
-- **Mode lecture seule** — `FOUNDRY_READONLY=1` n'expose que les 50 outils de lecture
+- **Mode lecture seule** — `FOUNDRY_READONLY=1` n'expose que les 58 outils de lecture
   et refuse les écritures : brancherez-y des intégrations joueurs ou non fiables.
 - **MCP 2025-06-18** — avec négociation 2025-03-26 et sortie structurée.
 - **Protocole compagnon** — trois modes de livraison : *scène* (tous les clients

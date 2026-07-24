@@ -9,14 +9,23 @@
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
-use super::companion::call_companion;
-use super::{str_arg, text_response};
+use super::companion::{call_companion, cmd_for};
+use super::{ToolDef, carry, str_arg, text_response};
 use crate::mcp::McpState;
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
+/// Construites une fois : `handles` est appelé pour chaque module à chaque
+/// dispatch, et rebâtir les schémas json! à chaque fois coûtait une
+/// allocation par outil pour une simple question d'appartenance.
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+fn build_definitions() -> Vec<ToolDef> {
     vec![
         ("client_ask",
          "Ask a player a question in a real dialog on THEIR screen and wait for their answer. targets: 'gm' / 'players' / [userId] (get ids from client_get_state). Returns the chosen option, or answered=false if they dismissed it or the timeout expired. Keep timeout_seconds around 30-40: MCP clients usually give up on a call after ~60 s — the player's answer still lands in get_events, but your call would have errored out.",
@@ -83,15 +92,6 @@ pub fn handles(name: &str) -> bool {
     definitions().iter().any(|(n, _, _)| *n == name)
 }
 
-/// Copie les clés présentes d'un Value vers un autre (arguments optionnels).
-fn carry(args: &Value, keys: &[&str], out: &mut Value) {
-    for k in keys {
-        if let Some(v) = args.get(*k) {
-            out[*k] = v.clone();
-        }
-    }
-}
-
 pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
     let targets = args.get("targets").cloned();
     let result = match name {
@@ -102,12 +102,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             carry(args, &["options", "title", "timeout_seconds"], &mut a);
             // On attend un peu plus longtemps que le dialogue lui-même, sinon
             // l'appel expire avant la réponse du joueur.
+            // Borné comme wait_for_message : au-delà de 300 s l'appelant MCP a
+            // de toute façon abandonné, et un u64 nu débordait plus bas dans
+            // `Instant + Duration`, qui panique au lieu de saturer.
             let wait = args
                 .get("timeout_seconds")
                 .and_then(Value::as_u64)
                 .unwrap_or(120)
-                + 15;
-            call_companion(state, "ask", a, targets, wait).await?
+                .clamp(1, 300)
+                .saturating_add(15);
+            call_companion(state, cmd_for(name), a, targets, wait).await?
         }
         "client_roll_formula" => {
             let formula =
@@ -117,7 +121,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(actor) = str_arg(args, "actor") {
                 a["actorId"] = json!(actor);
             }
-            call_companion(state, "roll_formula", a, None, 30).await?
+            call_companion(state, cmd_for(name), a, None, 30).await?
         }
         "client_select" | "client_target" => {
             let tokens = args
@@ -126,26 +130,19 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 .ok_or_else(|| anyhow!("'tokens' is required"))?;
             let mut a = json!({ "tokens": tokens });
             carry(args, &["release_others"], &mut a);
-            let cmd = if name == "client_select" {
-                "select"
-            } else {
-                "target"
-            };
-            call_companion(state, cmd, a, None, 10).await?
+            call_companion(state, cmd_for(name), a, None, 10).await?
         }
         "client_fog" => {
             let mut a = json!({});
             carry(args, &["action"], &mut a);
-            call_companion(state, "fog", a, None, 20).await?
+            call_companion(state, cmd_for(name), a, None, 20).await?
         }
         "client_weather" => {
             let mut a = json!({});
             carry(args, &["effects", "clear"], &mut a);
-            call_companion(state, "weather", a, None, 15).await?
+            call_companion(state, cmd_for(name), a, None, 15).await?
         }
-        "client_weather_types" => {
-            call_companion(state, "weather_types", json!({}), None, 10).await?
-        }
+        "client_weather_types" => call_companion(state, cmd_for(name), json!({}), None, 10).await?,
         "client_token_fx" => {
             let tokens = args
                 .get("tokens")
@@ -153,15 +150,15 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 .ok_or_else(|| anyhow!("'tokens' is required"))?;
             let mut a = json!({ "tokens": tokens });
             carry(args, &["preset", "remove"], &mut a);
-            call_companion(state, "token_fx", a, None, 15).await?
+            call_companion(state, cmd_for(name), a, None, 15).await?
         }
         "client_token_fx_presets" => {
-            call_companion(state, "token_fx_presets", json!({}), None, 10).await?
+            call_companion(state, cmd_for(name), json!({}), None, 10).await?
         }
         "client_effect_catalog" => {
             let mut a = json!({});
             carry(args, &["query", "under", "limit"], &mut a);
-            call_companion(state, "effect_catalog", a, None, 15).await?
+            call_companion(state, cmd_for(name), a, None, 15).await?
         }
         other => bail!("Unknown tool: {other}"),
     };

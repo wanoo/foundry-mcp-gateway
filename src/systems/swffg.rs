@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use super::swffg_derived::derive_skill_pool;
 use super::swffg_dice::{FfgPool, format_pool, format_result, result_json, roll_ffg_pool};
 use crate::mcp::McpState;
+use crate::tools::ToolDef;
 use crate::tools::{post_chat, roll_table_draws, str_arg, text_response};
 
 const STAT_PATHS: [(&str, &str); 11] = [
@@ -25,8 +26,17 @@ const STAT_PATHS: [(&str, &str); 11] = [
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
+/// Construites une fois : `handles` est appelé pour chaque module à chaque
+/// dispatch, et rebâtir les schémas json! à chaque fois coûtait une
+/// allocation par outil pour une simple question d'appartenance.
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+fn build_definitions() -> Vec<ToolDef> {
     let dice_props = json!({
         "ability":{"type":"number"},"proficiency":{"type":"number"},
         "difficulty":{"type":"number"},"challenge":{"type":"number"},
@@ -141,7 +151,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         "roll_ffg_pool" => {
             let description =
                 str_arg(args, "description").ok_or_else(|| anyhow!("'description' is required"))?;
-            let pool = FfgPool::from_args(args);
+            let pool = FfgPool::from_args(args)?;
             let roll = {
                 let mut rng = rand::rng();
                 roll_ffg_pool(&pool, || rand::RngExt::random::<f64>(&mut rng))
@@ -229,15 +239,17 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let setback = (extra("setback") + derived["setback"].as_i64().unwrap_or(0)
                 - derived["removeSetback"].as_i64().unwrap_or(0))
             .max(0) as u32;
-            let pool = FfgPool {
-                ability: derived["ability"].as_u64().unwrap_or(0) as u32,
-                proficiency: derived["proficiency"].as_u64().unwrap_or(0) as u32,
-                boost: derived["boost"].as_u64().unwrap_or(0) as u32 + extra("boost").max(0) as u32,
-                setback,
-                difficulty: extra("difficulty").max(0) as u32,
-                challenge: extra("challenge").max(0) as u32,
-                force: extra("force").max(0) as u32,
-            };
+            // Plafonné : la fiche est saine, mais les modificateurs `extra`
+            // viennent de l'appelant MCP et s'y ajoutent.
+            let pool = FfgPool::checked([
+                derived["ability"].as_u64().unwrap_or(0),
+                derived["proficiency"].as_u64().unwrap_or(0),
+                extra("difficulty").max(0) as u64,
+                extra("challenge").max(0) as u64,
+                derived["boost"].as_u64().unwrap_or(0) + extra("boost").max(0) as u64,
+                u64::from(setback),
+                extra("force").max(0) as u64,
+            ])?;
             let roll = {
                 let mut rng = rand::rng();
                 roll_ffg_pool(&pool, || rand::RngExt::random::<f64>(&mut rng))
