@@ -82,19 +82,17 @@ static PENDING_RX: std::sync::LazyLock<
 async fn sse_handler(
     State(_state): State<McpState>,
     headers: HeaderMap,
-) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, Response> {
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, &'static str)> {
+    // erreur en (StatusCode, &str) plutôt qu'en Response : clippy::result_large_err
     let sid = headers
         .get(SESSION_HEADER)
         .and_then(|v| v.to_str().ok())
         .map(String::from)
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "mcp-session-id manquant").into_response())?;
-    let rx = PENDING_RX.lock().await.remove(&sid).ok_or_else(|| {
-        (
-            StatusCode::NOT_FOUND,
-            "session inconnue ou flux déjà ouvert",
-        )
-            .into_response()
-    })?;
+        .ok_or((StatusCode::BAD_REQUEST, "mcp-session-id manquant"))?;
+    let rx = PENDING_RX.lock().await.remove(&sid).ok_or((
+        StatusCode::NOT_FOUND,
+        "session inconnue ou flux déjà ouvert",
+    ))?;
 
     let stream = futures_util::stream::unfold(rx, |mut rx| async move {
         let value = rx.recv().await?;
