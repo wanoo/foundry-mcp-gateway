@@ -306,7 +306,7 @@ mod tests {
                     difficulty: 1,
                     ..Default::default()
                 },
-                || rand::Rng::random::<f64>(&mut rng),
+                || rand::RngExt::random::<f64>(&mut rng),
             );
             if r.is_success {
                 wins += 1;

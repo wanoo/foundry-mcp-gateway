@@ -186,7 +186,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     args.get("disadvantage")
                         .and_then(Value::as_bool)
                         .unwrap_or(false),
-                    || rand::Rng::random::<f64>(&mut rng),
+                    || rand::RngExt::random::<f64>(&mut rng),
                 )
             };
             let summary = format_duality(&roll);

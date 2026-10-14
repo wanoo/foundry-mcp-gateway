@@ -233,7 +233,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         .and_then(Value::as_bool)
                         .unwrap_or(false),
                     dc,
-                    || rand::Rng::random::<f64>(&mut rng),
+                    || rand::RngExt::random::<f64>(&mut rng),
                 )
             };
             let summary = format_d20(&result, modifier);
