@@ -108,8 +108,10 @@ Rules of the road:
   `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `ci:`. Scope welcome
   (`feat(systems): add pf2e`). Older commits are French and free-form — that
   changed with the public release, don't imitate them.
-- **Versions are shared with the companion module**: both repositories carry the
-  same number. If you change the command protocol, bump both.
+- **Versions track the companion module** on major.minor: 1.5.x on both sides.
+  A protocol change (a new `client_*` tool, a changed payload) bumps the minor on
+  *both* repositories. A fix confined to one half is a patch release there alone —
+  `client_status` only flags a drift when major.minor differ.
 - One logical change per PR. The template asks how you tested it — answer
   honestly, "not tested against a real world" is a valid answer that saves the
   reviewer time.
