@@ -160,13 +160,15 @@ jobs:
           docker buildx imagetools inspect \
             docker.io/${{ env.IMAGE }}:${{ needs.check.outputs.version }} | tee /tmp/inspect
           grep -q "linux/amd64" /tmp/inspect && grep -q "linux/arm64" /tmp/inspect
+      # ce job ne part pas d'un checkout : sans lui, pas de README.md à pousser
+      - uses: actions/checkout@v7
       - name: Push the README to the Docker Hub page
         uses: peter-evans/dockerhub-description@v5
         with:
           username: wanoo
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.IMAGE }}
-          short-description: "MCP server for Foundry VTT — 134 tools, single Rust binary"
+          short-description: "MCP server for Foundry VTT — 135 tools, single Rust binary"
 
   # ─── Release GitHub : notes issues du CHANGELOG + binaires ───────────────
   release:
