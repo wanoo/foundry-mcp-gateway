@@ -190,7 +190,8 @@ pub(super) fn truncate_by_bytes(mut docs: Vec<Value>, max_length: Option<usize>)
 /// Un outil sans effet de bord sur le monde (sert aux annotations ET au mode
 /// FOUNDRY_READONLY). ⚠️ manage_modules/manage_users ÉCRIVENT : jamais ici.
 pub fn is_read_only(name: &str) -> bool {
-    name.starts_with("get_")
+    cc_family::is_read_only(name)
+        || name.starts_with("get_")
         || name.starts_with("list_")
         || matches!(
             name,
@@ -218,11 +219,6 @@ pub fn is_read_only(name: &str) -> bool {
                 // le cas d'un nom qui survit à un outil renommé ou supprimé.
                 | "browse_files"
                 | "show_credentials"
-                | "cc_list_sheets"
-                | "cc_get_sheet"
-                | "al_find"
-                | "mc_get_time"
-                | "mc_list_notes"
                 | "mat_list"
         )
 }

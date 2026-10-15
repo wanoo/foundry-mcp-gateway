@@ -36,7 +36,17 @@ pub enum Delivery {
 /// vers `docs/companion-commands.json`, que le `check-parity.sh` du compagnon
 /// compare à ses handlers. Ajouter un `client_*` sans l'inscrire ici fait
 /// échouer `chaque_client_a_une_commande`.
-pub const COMPANION_COMMANDS: &[(&str, &str, Delivery)] = &[
+pub static COMPANION_COMMANDS: std::sync::LazyLock<Vec<(&str, &str, Delivery)>> =
+    std::sync::LazyLock::new(|| {
+        CORE_COMMANDS
+            .iter()
+            .chain(super::cc_family::commands())
+            .copied()
+            .collect()
+    });
+
+/// Commandes des outils `client_*` hors suite wgtnGM (qui déclare les siennes).
+const CORE_COMMANDS: &[(&str, &str, Delivery)] = &[
     ("client_status", "ping_module", Delivery::Unique),
     ("client_run_macro", "run_macro", Delivery::Unique),
     ("client_run_script", "run_script", Delivery::Unique),
@@ -72,16 +82,6 @@ pub const COMPANION_COMMANDS: &[(&str, &str, Delivery)] = &[
     ("client_capture", "capture", Delivery::Unique),
     ("client_babele", "babele", Delivery::Unique),
     ("client_scene_report", "scene_report", Delivery::Unique),
-    ("client_cc_convert", "cc_convert", Delivery::Unique),
-    (
-        "client_cc_export_obsidian",
-        "cc_export_obsidian",
-        Delivery::Unique,
-    ),
-    ("client_cc_open_toc", "cc_open_toc", Delivery::Unique),
-    ("client_al_open", "al_open", Delivery::Unique),
-    ("client_mc_set_time", "mc_set_time", Delivery::Unique),
-    ("client_mc_open", "mc_open", Delivery::Unique),
     ("client_mat_trigger", "mat_trigger", Delivery::Unique),
     ("client_seq_between", "seq_between", Delivery::Unique),
     ("client_seq_sound", "seq_sound", Delivery::Unique),
@@ -457,7 +457,6 @@ mod tests {
             ("client_ask", "ask", Delivery::Addressed),
             ("client_select", "select", Delivery::Unique),
             ("client_target", "target", Delivery::Unique),
-            ("client_cc_convert", "cc_convert", Delivery::Unique),
             ("client_get_state", "get_client_state", Delivery::Unique),
         ];
         for (tool, cmd, delivery) in attendu {
@@ -478,6 +477,6 @@ mod tests {
         };
         assert_eq!(n(Delivery::Scene), 5);
         assert_eq!(n(Delivery::Addressed), 1);
-        assert_eq!(n(Delivery::Unique), 30);
+        assert_eq!(n(Delivery::Unique), COMPANION_COMMANDS.len() - 6);
     }
 }
