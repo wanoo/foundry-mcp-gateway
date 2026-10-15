@@ -95,6 +95,18 @@ pub async fn get_session(http: &reqwest::Client, hostname: &str) -> Result<Strin
     Ok(sid)
 }
 
+/// Corps du POST /join. v14 (build 368) ne lit plus que `userId` et répond
+/// 401 JOIN.ErrorUserDoesNotExist à `userid` seul ; v13 lit `userid` — on
+/// envoie les deux, chaque génération ignore celui qu'elle ne connaît pas.
+fn join_payload(cred: &Credential) -> Value {
+    serde_json::json!({
+        "action": "join",
+        "userid": cred.userid,
+        "userId": cred.userid,
+        "password": cred.password,
+    })
+}
+
 /// POST /join : authentifie la session sur le compte donné.
 pub async fn authenticate(
     http: &reqwest::Client,
@@ -105,15 +117,12 @@ pub async fn authenticate(
     let (host, base) = split_host(hostname);
     let (http_s, _) = schemes(hostname);
     let url = format!("{http_s}://{host}{base}/join");
-    let payload = serde_json::json!({
-        "action": "join",
-        "userid": cred.userid,
-        "password": cred.password,
-    });
     let resp = http
         .post(&url)
         .header(reqwest::header::COOKIE, format!("session={session_id}"))
-        .json(&payload)
+        // v14 build 368 répond un 400 générique à un POST /join sans Origin
+        .header(reqwest::header::ORIGIN, format!("{http_s}://{host}"))
+        .json(&join_payload(cred))
         .send()
         .await
         .context("POST /join")?;
@@ -155,6 +164,21 @@ pub fn socket_url_and_cookie(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn join_payload_v13_et_v14() {
+        let cred = Credential {
+            id: "c".into(),
+            hostname: "rpg.example.com".into(),
+            userid: "u1".into(),
+            password: "pw".into(),
+        };
+        let p = join_payload(&cred);
+        assert_eq!(p["action"], "join");
+        assert_eq!(p["userid"], "u1"); // v13
+        assert_eq!(p["userId"], "u1"); // v14
+        assert_eq!(p["password"], "pw");
+    }
 
     #[test]
     fn split_host_prefixe() {

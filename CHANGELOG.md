@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Response shapes** — the contract documented in
 [docs/integrators.md](docs/integrators.md) — only change on a **major** version.
 
+## [Unreleased]
+
+### Fixed
+
+- **`POST /join` on Foundry v14 build 368.** That build rejects the lowercase
+  `userid` field (401 `JOIN.ErrorUserDoesNotExist`) and answers a generic 400
+  when the request has no `Origin` header. The join payload now carries both
+  `userid` (v13) and `userId` (v14), and the request sends `Origin`.
+  Thanks @Gremlim (#11).
+
 ## [1.5.0] — 2026-07-19
 
 *First release aimed at people other than its author.*
