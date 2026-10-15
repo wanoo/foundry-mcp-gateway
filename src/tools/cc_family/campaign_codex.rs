@@ -779,10 +779,8 @@ fn patch_objective(o: &mut Value, args: &Value) {
     if let Some(t) = args.get("text").and_then(Value::as_str) {
         o["text"] = json!(t);
     }
-    for k in ["visible"] {
-        if let Some(b) = args.get(k).and_then(Value::as_bool) {
-            o[k] = json!(b);
-        }
+    if let Some(b) = args.get("visible").and_then(Value::as_bool) {
+        o["visible"] = json!(b);
     }
     // completed / failed s'excluent, comme dans la feuille de quête
     if let Some(b) = args.get("completed").and_then(Value::as_bool) {
