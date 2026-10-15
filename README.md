@@ -7,7 +7,7 @@
 **Give your AI assistant a seat at your gaming table.**
 
 An independent [MCP](https://modelcontextprotocol.io) server for [Foundry VTT](https://foundryvtt.com) —
-one small Rust binary that logs into your world *like a player* and hands your AI **135 tools**
+one small Rust binary that logs into your world *like a player* and hands your AI **166 tools**
 to prep, run, and stage your games.
 
 [![Rust](https://img.shields.io/badge/Rust-single%20binary-orange?logo=rust)](https://www.rust-lang.org)
@@ -192,8 +192,8 @@ Several worlds? Put several objects in the credentials array and switch with
 
 ## 🧙 What your AI can do at your table
 
-**135 tools**, organized the way a GM works — 127 always, plus 8 administration
-tools that appear only when `FOUNDRY_ADMIN_PASSWORD` is set. 58 read-only tools
+**166 tools**, organized the way a GM works — 158 always, plus 8 administration
+tools that appear only when `FOUNDRY_ADMIN_PASSWORD` is set. 69 read-only tools
 are flagged as such so your MCP client can auto-approve them; only the two
 deletions are marked destructive. Check what your own deployment exposes with
 `foundry-mcp --dump-tools`.
@@ -271,11 +271,22 @@ All modules load by default; restrict with `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
 
 ### 🗃️ Campaign management — the [wgtnGM](https://campaigncodex.wgtngm.com/) suite
 
-| Addon | Tools |
-|---|---|
-| **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** | `cc_list_sheets` `cc_get_sheet` `cc_create_sheet` `cc_link` · companion: `client_cc_convert` (bulk journal→sheet migration), `client_cc_export_obsidian`, `client_cc_open_toc` |
-| **Asset Librarian** | `al_tag` / `al_find` · companion: `client_al_open` |
-| **Mini Calendar** | `mc_get_time` / `mc_set_time` / `mc_list_notes` · companion: `client_mc_set_time` (dawn/dusk), `client_mc_open` |
+| Addon | Tools | What for |
+|---|---|---|
+| **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** 6.9 | `cc_list_sheets` `cc_get_sheet` `cc_create_sheet` `cc_link` | Sheets in the 6.x format (managed Information / GM Notes pages, hidden from players unless `player_visible`), links written on **both** sides for every relation, with unlinking and cycle guards |
+| | `cc_quest_update` / `cc_objective` | Quests: status, pin, urgency, giver, related sheets, rewards, check-ins, optional chat notice — and the nested objective tree |
+| | `cc_set_visibility` / `cc_set_content` | What players see (sheet, per-tab GM-only, hidden links) and the prose (Information, GM Notes, custom tabs) |
+| | `cc_shop_set_item` · companion: `client_cc_shop_add_item` | Shop inventory: add items through Campaign Codex, then quantity, custom price, infinite stock, visibility, markup |
+| | `cc_webhub_status` / `cc_webhub_exclude` | Web Hub Sync: read which sheets are synced, exclude sensitive ones — a flag only, **never** triggers a sync |
+| | companion: `client_cc_convert` `client_cc_open_toc` `client_cc_open_quest_board` `client_cc_open_sheet` `client_cc_migrate_content` `client_cc_export_obsidian` | Convert journals into sheets, open the Hub / quest board / a sheet without toggling them shut, repair old sheets, Obsidian export |
+| **Asset Librarian** 1.4 | `al_tag` `al_find` `al_list_tags` `al_image_tags` · companion: `client_al_search` `client_al_open` | Tag documents (category + filter tags, as arrays), find them by tag, list the tag registry and groups, read image tags, search assets and open the browser pre-filtered |
+| **Mini Calendar** 10 | `mc_get_time` `mc_set_time` `mc_list_notes` `mc_add_note` `mc_update_note` `mc_delete_note` | World time, and calendar notes read and written the way the module stores them |
+| | `mc_get_weather` `mc_weather_types` `mc_calendar_info` · companion: `client_mc_set_weather` | Forecast (°C and °F), usable weather types, calendar setup (months, seasons, moons, sun); force the weather of a day |
+| | companion: `client_mc_get_date` `client_mc_set_date` `client_mc_set_time` `client_mc_open` | Live date (season, moon phases), jump to a date or to dawn / noon / dusk / midnight, *next* or in N days |
+| **Mini Countdown Dice** | `cd_list` / `cd_set` | Threat clocks and countdowns shown to everyone: create, set, ±delta, auto-count on turn or round, show/hide, lock to a scene |
+| **Mini Light Switch** | `ls_lights` / `ls_toggle` | List a scene's lights, switch them on/off by id or Tagger tag, set the animated graphic — works even without the module |
+| **Mini Player** | `mp_list_presets` `mp_scene_audio` · companion: `client_mp_play_preset` `client_mp_play_tags` | Start a saved ambience or music by tags; set the audio a scene plays when activated |
+| **Mini Rolltable** | `draw_from_table` | Quantities (`1d4+1` goblins) and linked tables are honoured, up to 5 levels deep |
 
 ### 🛠️ Administration — the world itself
 

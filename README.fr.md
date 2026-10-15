@@ -8,7 +8,7 @@
 
 Un serveur [MCP](https://modelcontextprotocol.io) indépendant pour [Foundry VTT](https://foundryvtt.com) —
 un petit binaire Rust qui se connecte à votre monde *comme un joueur* et offre à votre IA
-**135 outils** pour préparer, animer et mettre en scène vos parties.
+**166 outils** pour préparer, animer et mettre en scène vos parties.
 
 [![Rust](https://img.shields.io/badge/Rust-un%20seul%20binaire-orange?logo=rust)](https://www.rust-lang.org)
 [![Foundry](https://img.shields.io/badge/Foundry%20VTT-v13%20%7C%20v14-ff6400)](https://foundryvtt.com)
@@ -197,9 +197,9 @@ gagné. Plusieurs mondes ? Plusieurs objets dans le tableau, bascule via
 
 ## 🧙 Ce que votre IA peut faire à votre table
 
-**135 outils**, organisés comme travaille un MJ — 127 en permanence, plus 8 outils
+**166 outils**, organisés comme travaille un MJ — 158 en permanence, plus 8 outils
 d'administration qui n'apparaissent que si `FOUNDRY_ADMIN_PASSWORD` est défini.
-58 outils de lecture seule sont annotés comme tels (auto-approbables par votre
+69 outils de lecture seule sont annotés comme tels (auto-approbables par votre
 client MCP) ; seules les deux suppressions sont marquées destructives. Pour voir
 ce que votre déploiement expose : `foundry-mcp --dump-tools`.
 
@@ -276,11 +276,22 @@ Tous chargés par défaut ; restreignez avec `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`
 
 ### 🗃️ Gestion de campagne — la suite [wgtnGM](https://campaigncodex.wgtngm.com/)
 
-| Addon | Outils |
-|---|---|
-| **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** | `cc_list_sheets` `cc_get_sheet` `cc_create_sheet` `cc_link` · compagnon : `client_cc_convert` (migration journal→fiche en masse), `client_cc_export_obsidian`, `client_cc_open_toc` |
-| **Asset Librarian** | `al_tag` / `al_find` · compagnon : `client_al_open` |
-| **Mini Calendar** | `mc_get_time` / `mc_set_time` / `mc_list_notes` · compagnon : `client_mc_set_time` (aube/crépuscule), `client_mc_open` |
+| Addon | Outils | Pour quoi faire |
+|---|---|---|
+| **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** 6.9 | `cc_list_sheets` `cc_get_sheet` `cc_create_sheet` `cc_link` | Fiches au format 6.x (pages gérées Information / Notes MJ, cachées aux joueurs sauf `player_visible`), liens écrits **des deux côtés** pour chaque relation, avec suppression et garde-fous contre les cycles |
+| | `cc_quest_update` / `cc_objective` | Quêtes : statut, épinglage, urgence, donneur, fiches liées, récompenses, suivi, annonce facultative dans le chat — et l'arbre des objectifs |
+| | `cc_set_visibility` / `cc_set_content` | Ce que voient les joueurs (fiche, onglets réservés au MJ, liens masqués) et la prose (Information, Notes MJ, onglets personnalisés) |
+| | `cc_shop_set_item` · compagnon : `client_cc_shop_add_item` | Inventaire de boutique : ajout via Campaign Codex, puis quantité, prix, stock infini, visibilité, majoration |
+| | `cc_webhub_status` / `cc_webhub_exclude` | Web Hub Sync : quelles fiches sont synchronisées, exclure les fiches sensibles — un drapeau, **jamais** de synchronisation lancée |
+| | compagnon : `client_cc_convert` `client_cc_open_toc` `client_cc_open_quest_board` `client_cc_open_sheet` `client_cc_migrate_content` `client_cc_export_obsidian` | Convertir des journaux en fiches, ouvrir le Hub / le tableau des quêtes / une fiche sans les refermer, réparer les anciennes fiches, export Obsidian |
+| **Asset Librarian** 1.4 | `al_tag` `al_find` `al_list_tags` `al_image_tags` · compagnon : `client_al_search` `client_al_open` | Étiqueter (catégorie + tags de filtre, en tableaux), retrouver par tag, lister le registre et les groupes de tags, lire les tags d'images, chercher et ouvrir le navigateur déjà filtré |
+| **Mini Calendar** 10 | `mc_get_time` `mc_set_time` `mc_list_notes` `mc_add_note` `mc_update_note` `mc_delete_note` | Heure du monde, et notes du calendrier lues et écrites comme le module les stocke |
+| | `mc_get_weather` `mc_weather_types` `mc_calendar_info` · compagnon : `client_mc_set_weather` | Prévisions (°C et °F), types de météo, configuration du calendrier (mois, saisons, lunes, soleil) ; forcer la météo d'un jour |
+| | compagnon : `client_mc_get_date` `client_mc_set_date` `client_mc_set_time` `client_mc_open` | Date en direct (saison, phases de lune), aller à une date ou à l'aube / midi / crépuscule / minuit, *suivant* ou dans N jours |
+| **Mini Countdown Dice** | `cd_list` / `cd_set` | Horloges de menace et comptes à rebours visibles de tous : créer, fixer, ±delta, décompte auto au tour ou au round, montrer/cacher, verrouiller sur une scène |
+| **Mini Light Switch** | `ls_lights` / `ls_toggle` | Lister les lumières d'une scène, les allumer/éteindre par id ou tag Tagger, poser le décor animé — fonctionne même sans le module |
+| **Mini Player** | `mp_list_presets` `mp_scene_audio` · compagnon : `client_mp_play_preset` `client_mp_play_tags` | Lancer une ambiance enregistrée ou de la musique par tags ; régler l'audio joué à l'activation d'une scène |
+| **Mini Rolltable** | `draw_from_table` | Quantités (`1d4+1` gobelins) et tables liées respectées, jusqu'à 5 niveaux |
 
 ### 🛠️ Administration — le monde lui-même
 
@@ -385,7 +396,7 @@ flowchart LR
   listings sur index BDD ; jamais de dump complet (hors `get_world`).
 - **Auto-réparant** — reconnexion infinie à backoff ; survit aux redémarrages du
   monde et même à une migration v13→v14 en vol.
-- **Mode lecture seule** — `FOUNDRY_READONLY=1` n'expose que les 58 outils de lecture
+- **Mode lecture seule** — `FOUNDRY_READONLY=1` n'expose que les 69 outils de lecture
   et refuse les écritures : brancherez-y des intégrations joueurs ou non fiables.
 - **MCP 2025-06-18** — avec négociation 2025-03-26 et sortie structurée.
 - **Protocole compagnon** — trois modes de livraison : *scène* (tous les clients

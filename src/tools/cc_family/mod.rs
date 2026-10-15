@@ -18,7 +18,6 @@ pub mod campaign_codex;
 pub mod mini_calendar;
 pub mod mini_suite;
 
-
 static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(|| {
     campaign_codex::definitions()
         .iter()

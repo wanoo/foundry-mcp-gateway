@@ -135,6 +135,21 @@
     "tool": "client_scene_report"
   },
   {
+    "cmd": "mat_trigger",
+    "delivery": "unique",
+    "tool": "client_mat_trigger"
+  },
+  {
+    "cmd": "seq_between",
+    "delivery": "unique",
+    "tool": "client_seq_between"
+  },
+  {
+    "cmd": "seq_sound",
+    "delivery": "unique",
+    "tool": "client_seq_sound"
+  },
+  {
     "cmd": "cc_convert",
     "delivery": "unique",
     "tool": "client_cc_convert"
@@ -150,9 +165,34 @@
     "tool": "client_cc_open_toc"
   },
   {
+    "cmd": "cc_open_quest_board",
+    "delivery": "unique",
+    "tool": "client_cc_open_quest_board"
+  },
+  {
+    "cmd": "cc_open_sheet",
+    "delivery": "unique",
+    "tool": "client_cc_open_sheet"
+  },
+  {
+    "cmd": "cc_migrate_content",
+    "delivery": "unique",
+    "tool": "client_cc_migrate_content"
+  },
+  {
+    "cmd": "cc_shop_add_item",
+    "delivery": "unique",
+    "tool": "client_cc_shop_add_item"
+  },
+  {
     "cmd": "al_open",
     "delivery": "unique",
     "tool": "client_al_open"
+  },
+  {
+    "cmd": "al_search",
+    "delivery": "unique",
+    "tool": "client_al_search"
   },
   {
     "cmd": "mc_set_time",
@@ -165,18 +205,28 @@
     "tool": "client_mc_open"
   },
   {
-    "cmd": "mat_trigger",
+    "cmd": "mc_get_date",
     "delivery": "unique",
-    "tool": "client_mat_trigger"
+    "tool": "client_mc_get_date"
   },
   {
-    "cmd": "seq_between",
+    "cmd": "mc_set_date",
     "delivery": "unique",
-    "tool": "client_seq_between"
+    "tool": "client_mc_set_date"
   },
   {
-    "cmd": "seq_sound",
+    "cmd": "mc_set_weather",
     "delivery": "unique",
-    "tool": "client_seq_sound"
+    "tool": "client_mc_set_weather"
+  },
+  {
+    "cmd": "mp_play_preset",
+    "delivery": "unique",
+    "tool": "client_mp_play_preset"
+  },
+  {
+    "cmd": "mp_play_tags",
+    "delivery": "unique",
+    "tool": "client_mp_play_tags"
   }
 ]
