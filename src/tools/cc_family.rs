@@ -228,10 +228,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 "pages": [{"name": sheet_name, "type": "text", "text": {"content": description}}],
                 "ownership": {"default": if gm_only { 0 } else { 2 }},
             });
-            let result = foundry.modify_document("JournalEntry", "create", json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                "data": [doc],
-            })).await?;
+            let result = foundry
+                .modify_document(
+                    "JournalEntry",
+                    "create",
+                    json!({
+                        "action": "create", "renderSheet": false, "keepId": false,
+                        "data": [doc],
+                    }),
+                )
+                .await?;
             let created_id = result
                 .pointer("/result/0/_id")
                 .cloned()

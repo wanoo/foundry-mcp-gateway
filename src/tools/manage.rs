@@ -335,10 +335,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     ("updated", r)
                 }
                 None => {
-                    let r = foundry.modify_document("Setting", "create", json!({
-                        "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                        "data": [{"key": KEY, "value": serialized}],
-                    })).await?;
+                    let r = foundry
+                        .modify_document(
+                            "Setting",
+                            "create",
+                            json!({
+                                "action": "create", "renderSheet": false, "keepId": false,
+                                "data": [{"key": KEY, "value": serialized}],
+                            }),
+                        )
+                        .await?;
                     ("created", r)
                 }
             };
@@ -529,7 +535,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     .modify_document(
                         "User",
                         "create",
-                        json!({ "action": "create", "broadcast": false, "renderSheet": false,
+                        json!({ "action": "create", "renderSheet": false,
                                 "keepId": false, "data": data }),
                     )
                     .await?;
@@ -594,7 +600,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     .modify_document(
                         "User",
                         "delete",
-                        json!({ "action": "delete", "broadcast": false, "deleteAll": false,
+                        json!({ "action": "delete", "deleteAll": false,
                                 "ids": ids }),
                     )
                     .await?;
@@ -623,10 +629,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     ("updated", r)
                 }
                 None => {
-                    let r = foundry.modify_document("Setting", "create", json!({
-                        "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                        "data": [{"key": key, "value": serialized}],
-                    })).await?;
+                    let r = foundry
+                        .modify_document(
+                            "Setting",
+                            "create",
+                            json!({
+                                "action": "create", "renderSheet": false, "keepId": false,
+                                "data": [{"key": key, "value": serialized}],
+                            }),
+                        )
+                        .await?;
                     ("created", r)
                 }
             };
@@ -774,10 +786,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             let imported = json!({"_id": doc["_id"], "name": doc["name"]});
-            let result = foundry.modify_document(&doc_type, "create", json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": keep_id,
-                "data": [doc],
-            })).await?;
+            let result = foundry
+                .modify_document(
+                    &doc_type,
+                    "create",
+                    json!({
+                        "action": "create", "renderSheet": false, "keepId": keep_id,
+                        "data": [doc],
+                    }),
+                )
+                .await?;
             Ok(text_response(
                 &json!({"imported": imported, "from": pack, "result": result}),
             ))

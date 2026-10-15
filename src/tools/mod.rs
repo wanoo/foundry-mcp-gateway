@@ -97,7 +97,7 @@ pub async fn post_chat(
             "ChatMessage",
             "create",
             json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+                "action": "create", "renderSheet": false, "keepId": false,
                 "data": [message],
             }),
         )

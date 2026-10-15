@@ -418,11 +418,17 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(h) = args.get("hidden").and_then(Value::as_bool) {
                 token["hidden"] = json!(h);
             }
-            let result = foundry.modify_document("Token", "create", json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                "parentUuid": format!("Scene.{}", scene["_id"].as_str().unwrap_or("")),
-                "data": [token],
-            })).await?;
+            let result = foundry
+                .modify_document(
+                    "Token",
+                    "create",
+                    json!({
+                        "action": "create", "renderSheet": false, "keepId": false,
+                        "parentUuid": format!("Scene.{}", scene["_id"].as_str().unwrap_or("")),
+                        "data": [token],
+                    }),
+                )
+                .await?;
             Ok(text_response(&json!({
                 "actor": {"_id": actor["_id"], "name": actor["name"]},
                 "scene": {"_id": scene["_id"], "name": scene["name"]},
@@ -473,11 +479,17 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         "condition": condition, "unchanged": "already active",
                     })));
                 }
-                let result = foundry.modify_document("ActiveEffect", "create", json!({
-                    "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                    "parentUuid": parent,
-                    "data": [{"name": status.1, "img": status.2, "statuses": [condition]}],
-                })).await?;
+                let result = foundry
+                    .modify_document(
+                        "ActiveEffect",
+                        "create",
+                        json!({
+                            "action": "create", "renderSheet": false, "keepId": false,
+                            "parentUuid": parent,
+                            "data": [{"name": status.1, "img": status.2, "statuses": [condition]}],
+                        }),
+                    )
+                    .await?;
                 Ok(text_response(&json!({
                     "actor": {"_id": actor["_id"], "name": actor["name"]},
                     "condition": condition, "added": true, "result": result,
@@ -491,9 +503,15 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 }
                 let ids: Vec<Value> = existing.iter().map(|e| e["_id"].clone()).collect();
                 let removed = ids.len();
-                let result = foundry.modify_document("ActiveEffect", "delete", json!({
-                    "action": "delete", "broadcast": false, "parentUuid": parent, "ids": ids,
-                })).await?;
+                let result = foundry
+                    .modify_document(
+                        "ActiveEffect",
+                        "delete",
+                        json!({
+                            "action": "delete", "parentUuid": parent, "ids": ids,
+                        }),
+                    )
+                    .await?;
                 Ok(text_response(&json!({
                     "actor": {"_id": actor["_id"], "name": actor["name"]},
                     "condition": condition, "removed": removed, "result": result,
@@ -651,7 +669,7 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                 "Combat",
                 "create",
                 json!({
-                    "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+                    "action": "create", "renderSheet": false, "keepId": false,
                     "data": [{"scene": scene["_id"], "active": true}],
                 }),
             )
@@ -671,10 +689,16 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                     })
                 })
                 .collect();
-            foundry.modify_document("Combatant", "create", json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                "parentUuid": format!("Combat.{combat_id}"), "data": data,
-            })).await?;
+            foundry
+                .modify_document(
+                    "Combatant",
+                    "create",
+                    json!({
+                        "action": "create", "renderSheet": false, "keepId": false,
+                        "parentUuid": format!("Combat.{combat_id}"), "data": data,
+                    }),
+                )
+                .await?;
         }
         return Ok(text_response(&json!({
             "combat": combat_id,
@@ -749,10 +773,16 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                     })
                 })
                 .collect();
-            let result = foundry.modify_document("Combatant", "create", json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                "parentUuid": format!("Combat.{combat_id}"), "data": data,
-            })).await?;
+            let result = foundry
+                .modify_document(
+                    "Combatant",
+                    "create",
+                    json!({
+                        "action": "create", "renderSheet": false, "keepId": false,
+                        "parentUuid": format!("Combat.{combat_id}"), "data": data,
+                    }),
+                )
+                .await?;
             Ok(text_response(&json!({
                 "combat": combat_id,
                 "added": tokens.iter().map(|t| t["name"].clone()).collect::<Vec<_>>(),
@@ -766,11 +796,9 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                 .get("initiative")
                 .and_then(Value::as_f64)
                 .ok_or_else(|| anyhow!("'initiative' is required"))?;
-            let empty = vec![];
-            let all = combat
-                .get("combatants")
-                .and_then(Value::as_array)
-                .unwrap_or(&empty);
+            // nom résolu depuis le jeton : un combattant créé depuis la scène
+            // n'a pas de `name` stocké (cf. status)
+            let all = with_names(state, &combat, sorted(&combat)).await?;
             let target = all
                 .iter()
                 .find(|c| c["_id"] == json!(who) || c["name"] == json!(who))
@@ -849,7 +877,7 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                     "Combat",
                     "delete",
                     json!({
-                        "action": "delete", "broadcast": false, "ids": [combat_id],
+                        "action": "delete", "ids": [combat_id],
                     }),
                 )
                 .await?;
@@ -983,7 +1011,7 @@ async fn draw_from_table(state: &McpState, args: &Value) -> Result<Value> {
                 "ChatMessage",
                 "create",
                 json!({
-                    "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+                    "action": "create", "renderSheet": false, "keepId": false,
                     "data": [message],
                 }),
             )

@@ -381,7 +381,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     .modify_document(
                         "Folder",
                         "create",
-                        json!({ "action": "create", "broadcast": false, "renderSheet": false,
+                        json!({ "action": "create", "renderSheet": false,
                                 "keepId": true, "data": missing }),
                     )
                     .await?;
@@ -408,7 +408,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             .modify_document(
                 doc_type,
                 "create",
-                json!({ "action": "create", "broadcast": false, "renderSheet": false,
+                json!({ "action": "create", "renderSheet": false,
                         "keepId": keep_id, "data": to_create }),
             )
             .await?;

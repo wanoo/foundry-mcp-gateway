@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Response shapes** — the contract documented in
 [docs/integrators.md](docs/integrators.md) — only change on a **major** version.
 
+## [Unreleased]
+
+*Foundry v14, tested end to end: 155 calls across every tool family on a live
+14.369 world (dnd5e, Daggerheart, and the optional modules the companion
+drives).*
+
+### Fixed
+
+- **Writes are broadcast again.** Every create, update and delete went out with
+  `broadcast: false`, and Foundry (v13 as well as v14) honours that flag: the
+  document was saved, but no connected client heard about it. A Gamemaster saw
+  an actor the gateway had just created only after a reload, and the companion
+  answered `Document not found` for it. The flag is gone; Foundry's default
+  broadcasts.
+- **Scenes created on v14 have a level.** v14 scenes need at least one level,
+  and the default one is added by the browser in `Scene#_preCreate` — code a
+  socket client never runs. A scene from `create_document` or `copy_documents`
+  was saved without one and the canvas crashed opening it
+  (`_determineInitialLevel`). The gateway now adds the default level the way
+  the browser does, carrying over the old background fields.
+- **`ChatMessage` gets an author.** v14 refuses a message whose `author` is
+  null; `create_document` now fills in the bot's user.
+- **Admin tools on v14.** Build 368 answers a bare 400 to any POST without an
+  `Origin` header, and v14 moved two routes: world creation now lives on
+  `/create`, and shutdown is `POST /setup {action: "worldShutdown"}`.
+  `admin_create_world`, `admin_shutdown_world` and `admin_edit_world` failed on
+  v14; they now send `Origin`, try the v14 route first and fall back to v13's.
+  Shutdown is confirmed on `/api/status` instead of trusting a 200, which both
+  routes return even when nothing happened. Uploads send `Origin` too.
+- **`manage_combat set_initiative` finds combatants by name.** Combatants
+  created from scene tokens store no name; the lookup now resolves it from the
+  token, as `status` already did.
+
 ## [1.6.0] — 2026-10-15
 
 *The release that closes the doors the companion left open, and stops trusting
