@@ -38,9 +38,11 @@ what's at stake:
 - **It stores Foundry credentials.** `FOUNDRY_CREDENTIALS_JSON` contains the
   password of a Gamemaster account. Anyone who reads that environment owns the
   world.
-- **The MCP endpoint's only protection is a secret in the URL path**
-  (`/mcp-<secret>`). That's a deliberate trade-off: MCP clients like Claude
-  Desktop cannot send custom headers. It means the secret travels in URLs and
+- **The MCP endpoint's only protection is a biscuit token in the URL path**
+  (`/mcp-<token>`). That's a deliberate trade-off: MCP clients like Claude
+  Desktop cannot send custom headers. Unlike the shared secret it replaced, a
+  token expires, can be scoped read-only, and can be revoked on its own — but
+  it is still a bearer credential. It means the token travels in URLs and
   may land in proxy logs or browser history. **Always put HTTPS in front**, and
   treat the URL as a password.
 - **Anyone reaching that endpoint acts as a Gamemaster**: read and write every
@@ -53,7 +55,7 @@ what's at stake:
   it exposes only the 50 read-only tools and refuses writes at dispatch.
 
 Especially in scope for a report: credential leakage, authentication bypass on
-the HTTP transport, reaching tools without the secret, escaping the read-only
+the HTTP transport, reaching tools without a valid token, escaping the read-only
 mode, and anything letting a *player* drive Gamemaster-level actions.
 
 Out of scope: an operator who deliberately exposes the endpoint without HTTPS,

@@ -10,7 +10,7 @@ descriptions d'outils restent en anglais, c'est ce que lisent les modèles.)*
 
 ```sh
 git clone https://github.com/wanoo/foundry-mcp-gateway && cd foundry-mcp-gateway
-cargo test                       # 25 unit tests, no Foundry needed
+cargo test                       # 48 unit tests, no Foundry needed
 ./scripts/check-docs.sh          # docs must match the code (see below)
 foundry-mcp --dump-tools | jq    # the full tool catalogue, no connection needed
 ```
@@ -18,29 +18,35 @@ foundry-mcp --dump-tools | jq    # the full tool catalogue, no connection needed
 Run it against a world:
 
 ```sh
-MCP_SECRET=test PORT=8940 \
+eval "$(cargo run -q -- --generate-mcp-key | grep MCP_ROOT_PRIVATE_KEY)"
+export MCP_ROOT_PRIVATE_KEY
+TOKEN=$(cargo run -q -- --mint-token dev | grep -v '^#' | tr -d '\n')
+PORT=8940 \
 FOUNDRY_CREDENTIALS_JSON='[{"_id":"dev","hostname":"…","userid":"…","password":"…"}]' \
 cargo run
-# then: claude mcp add foundry-dev --transport http http://localhost:8940/mcp-test
+# then: claude mcp add foundry-dev --transport http http://localhost:8940/mcp-$TOKEN
 ```
 
-### A throwaway Foundry to test against
+### A world to test against
 
-**Don't develop against a campaign you care about.** `foundry-local/compose.yml`
-in this workspace boots a disposable Foundry in Docker — it's what validated the
-cross-server migration tools. You need a Foundry licence and a presigned release
-URL from your foundryvtt.com profile (it expires in minutes, so start the
-container right after generating it):
+**Don't develop against a campaign you care about.** Point the gateway at a
+throwaway world instead — `"hostname": "localhost:30000"` works as-is, plain
+HTTP and non-standard ports included, so a Foundry on your own machine or LAN
+needs no extra setup.
 
-```sh
-cd foundry-local
-printf 'FOUNDRYVTT_KEY=…\nFOUNDRY_RELEASE_URL=…\nFOUNDRY_ADMIN_KEY=…\n' > .env
-docker compose up -d             # http://localhost:30000, accept the EULA once
-```
+**No Foundry licence?** You can still contribute. What works with no world at
+all:
 
-The release archive is cached in `data/`, so later restarts don't need a fresh
-URL. Point the gateway at it with `"hostname": "localhost:30000"` — plain HTTP
-and non-standard ports are supported for exactly this case.
+| You can | How |
+|---|---|
+| Add a game system or a tool | `cargo test` — dice engines take an injectable RNG, derived-stat logic is pure |
+| Inspect the tool catalogue | `foundry-mcp --dump-tools \| jq` |
+| Check registry consistency | `cargo test chaque_outil_a_un_seul_proprietaire` |
+| Check the docs | `./scripts/check-docs.sh` |
+
+What you genuinely can't do offline is confirm a *third-party module's* runtime
+API behaves as you assumed. Say so in your PR — "not tested against a real
+world" is an accepted answer, and it tells the reviewer exactly what to run.
 
 ### Docs are checked, not trusted
 
@@ -87,6 +93,8 @@ If it needs the addon's client API, you write a **pair**:
 | Server (Rust) | `src/tools/<theme>.rs` | Tool definition + `call_companion(state, "cmd", args, targets, timeout)` |
 | Companion (JS) | `scripts/addons/<theme>.mjs` in [the companion repo](https://github.com/wanoo/foundry-mcp-gateway-companion) | `export const X_HANDLERS = { async cmd(args) { … } }`, merged in `main.mjs` |
 
+
+Add the pairing to `COMPANION_COMMANDS` in `src/tools/companion.rs` and call `call_companion(state, cmd_for(name), …)` rather than a literal — that table is the single source of truth, exported to `docs/companion-commands.json` and checked against the companion's handlers by its `check-parity.sh`.
 **Pick the command's delivery category** (in the companion's `main.mjs`):
 
 - **scene** — every targeted client runs it, one ack (notifications, camera, sounds);
@@ -123,8 +131,12 @@ Rules of the road:
 - [ ] `cargo test` green (add tests for any pure logic).
 - [ ] Tool descriptions in **English**, written for a model: say *when* to use the
       tool, not just what it does.
-- [ ] **Validated against a real world** — note the Foundry + system/addon versions
-      in your PR description.
+- [ ] **Tested as far as you can.** With a licence: validate against a real
+      world and note the Foundry + system/addon versions in your PR. Without
+      one: say "not tested against a real world" — that is an accepted answer.
+      What is never accepted is silence about it. Anything touching a
+      third-party module's runtime API needs one live run before it *merges*,
+      by you or by a reviewer; that's a merge gate, not a PR gate.
 - [ ] README tables updated (EN **and** FR) + the total tool count.
 - [ ] `./scripts/check-docs.sh` green (it will tell you which number to fix).
 - [ ] Companion changes: bump `module.json` + `VERSION` in `main.mjs`; releases

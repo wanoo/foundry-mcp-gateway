@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use crate::foundry::documents::get_path;
 use crate::mcp::McpState;
+use crate::tools::ToolDef;
 use crate::tools::{post_chat, str_arg, text_response};
 
 const ABILITIES: [(&str, &str); 6] = [
@@ -130,8 +131,17 @@ pub fn format_d20(r: &D20Result, modifier: i64) -> String {
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
+/// Construites une fois : `handles` est appelé pour chaque module à chaque
+/// dispatch, et rebâtir les schémas json! à chaque fois coûtait une
+/// allocation par outil pour une simple question d'appartenance.
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+fn build_definitions() -> Vec<ToolDef> {
     vec![
         ("dnd5e_roll_check",
          "d20 check FOR a dnd5e actor: ability (\"str\"), skill (\"athletics\"/\"ath\"), or save (\"dex_save\"). Modifier derived from the sheet; advantage/disadvantage cancel; nat 20/1 auto.",

@@ -15,7 +15,7 @@ use crate::mcp::McpState;
 
 pub struct SystemModule {
     pub id: &'static str,
-    pub definitions: fn() -> Vec<(&'static str, &'static str, Value)>,
+    pub definitions: fn() -> &'static [crate::tools::ToolDef],
     pub handles: fn(&str) -> bool,
 }
 
@@ -39,7 +39,15 @@ pub fn all_modules() -> Vec<SystemModule> {
     ]
 }
 
-pub fn loaded_modules() -> Vec<SystemModule> {
+/// Résolus une seule fois : `FOUNDRY_SYSTEMS` est fixé au démarrage, et le
+/// relire à chaque dispatch coûtait un accès à l'environnement par appel.
+static LOADED: std::sync::LazyLock<Vec<SystemModule>> = std::sync::LazyLock::new(resolve_modules);
+
+pub fn loaded_modules() -> &'static [SystemModule] {
+    &LOADED
+}
+
+fn resolve_modules() -> Vec<SystemModule> {
     match std::env::var("FOUNDRY_SYSTEMS") {
         Err(_) => all_modules(),
         Ok(wanted) => {

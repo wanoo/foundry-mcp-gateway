@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Response shapes** — the contract documented in
 [docs/integrators.md](docs/integrators.md) — only change on a **major** version.
 
-## [Unreleased]
+## [1.6.0] — 2026-10-15
+
+*The release that closes the doors the companion left open, and stops trusting
+a shared secret to guard a whole world.*
+
+### Added
+
+- **Signed companion commands.** Foundry relays module socket channels to every
+  connected client and never says who sent a message, so any player could emit
+  `run_macro` from their browser console and have the Gamemaster execute it —
+  bypassing the remote-script setting entirely. Commands now carry an ECDSA
+  P-256 signature the companion verifies with `crypto.subtle`: no dependency,
+  no build step, and no WASM in a Foundry module. `--generate-key`,
+  `--print-public-key`, and a `companion_trust_key` tool that installs the
+  public half itself rather than making you copy a long hex string.
+- **Biscuit tokens replace `MCP_SECRET`.** A shared secret had no scope, no
+  expiry and no revocation: handing it to an integrator handed over all 135
+  tools with Gamemaster rights, forever. Tokens expire, can be minted
+  read-only, can be attenuated further offline without the private key, and can
+  be revoked one at a time. `--generate-mcp-key`, `--mint-token`, and
+  `MCP_REVOKED_TOKENS`.
 
 ### Fixed
 
@@ -16,6 +36,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   when the request has no `Origin` header. The join payload now carries both
   `userid` (v13) and `userId` (v14), and the request sends `Origin`.
   Thanks @Gremlim (#11).
+- **Three ways to crash the gateway from a tool call.** An unbounded dice pool
+  made `format_pool` allocate gigabytes and `abort()` the process — taking every
+  MCP session with it. A RollTable with the formula `1d0` panicked on a division
+  by zero. An unbounded `timeout_seconds` overflowed `Instant + Duration`. All
+  three are bounded, and refused with an error that names the cause.
+- **Writes could be silently duplicated.** On reconnection the pending acks were
+  dropped but the outgoing frame queue was not, so a `create_document` reported
+  as failed still reached Foundry seconds later — and the agent, told it had
+  failed, retried.
+- **MCP sessions were never reclaimed.** Only an explicit `DELETE` removed one,
+  so a client that disconnected abruptly leaked a receiver for the life of the
+  process.
+- **A burst of events made the event bridge drop out.** `Lagged` — the normal
+  outcome of a full broadcast buffer — was treated as a closed channel, so the
+  bridge slept and resubscribed exactly when traffic was heaviest.
+- **`upload_file` would fetch any URL**, including cloud instance metadata.
+  Link-local addresses are now refused everywhere; private ranges are allowed
+  only when the gateway is hosted alongside a private network — which it detects
+  from your own instances, so a Raspberry Pi or homelab setup keeps working.
+- **`FOUNDRY_READONLY` refused eight tools that read nothing**, making the mode
+  stricter than documented.
+- **A tool could be claimed by two modules, or by none.** `handles` was based on
+  name prefixes and only worked because of the order of the dispatch chain; each
+  module now lists its own names, and a test asserts exactly one owner per tool.
+- `/api/status` was hard-coded to HTTPS, so `ping` failed on every plain-HTTP
+  local Foundry.
+
+### Changed
+
+- Tool definitions are built once instead of on every dispatch, and
+  `truncate_by_bytes` no longer re-serialises the whole array per dropped
+  document.
+- `CONTRIBUTING.md` no longer promises a test environment the repository does
+  not ship, and its definition of done no longer requires something a
+  contributor without a Foundry licence cannot produce.
+- The `docker` and `crates` release jobs are skipped outside the upstream
+  repository, so a fork's release pipeline is no longer red by construction.
+- The gateway↔companion pairing lives in one table (`COMPANION_COMMANDS`),
+  exported to `docs/companion-commands.json` and checked against the
+  companion's handlers, so the two halves can no longer drift in silence.
 
 ## [1.5.0] — 2026-07-19
 

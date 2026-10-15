@@ -10,14 +10,23 @@
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
-use super::companion::call_companion;
-use super::{image_response, str_arg, text_response};
+use super::companion::{call_companion, cmd_for};
+use super::{ToolDef, carry, image_response, str_arg, text_response};
 use crate::mcp::McpState;
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
+/// Construites une fois : `handles` est appelé pour chaque module à chaque
+/// dispatch, et rebâtir les schémas json! à chaque fois coûtait une
+/// allocation par outil pour une simple question d'appartenance.
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+fn build_definitions() -> Vec<ToolDef> {
     vec![
         ("client_get_derived",
          "THE reliable way to read a sheet: returns the PREPARED values (after the system's prepareData and active effects) for any document uuid — not the source document, whose stats are often zero/incomplete. Use this rather than get_actor whenever you need what the player actually sees. Optionally includes owned items and active effects.",
@@ -68,49 +77,33 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         "client_get_derived" => {
             let uuid = str_arg(args, "uuid").ok_or_else(|| anyhow!("'uuid' is required"))?;
             let mut a = json!({ "uuid": uuid });
-            for k in ["items", "effects"] {
-                if let Some(v) = args.get(k) {
-                    a[k] = v.clone();
-                }
-            }
+            carry(args, &["items", "effects"], &mut a);
             Ok(text_response(
-                &call_companion(state, "get_derived", a, None, 15).await?,
+                &call_companion(state, cmd_for(name), a, None, 15).await?,
             ))
         }
         "client_enrich" => {
             let mut a = json!({});
-            for k in ["uuid", "html", "secrets"] {
-                if let Some(v) = args.get(k) {
-                    a[k] = v.clone();
-                }
-            }
+            carry(args, &["uuid", "html", "secrets"], &mut a);
             if a.get("uuid").is_none() && a.get("html").is_none() {
                 bail!("give 'uuid' or 'html'");
             }
             Ok(text_response(
-                &call_companion(state, "enrich", a, None, 15).await?,
+                &call_companion(state, cmd_for(name), a, None, 15).await?,
             ))
         }
         "client_search" => {
             let query = str_arg(args, "query").ok_or_else(|| anyhow!("'query' is required"))?;
             let mut a = json!({ "query": query });
-            for k in ["types", "limit"] {
-                if let Some(v) = args.get(k) {
-                    a[k] = v.clone();
-                }
-            }
+            carry(args, &["types", "limit"], &mut a);
             Ok(text_response(
-                &call_companion(state, "search", a, None, 15).await?,
+                &call_companion(state, cmd_for(name), a, None, 15).await?,
             ))
         }
         "client_capture" => {
             let mut a = json!({});
-            for k in ["max_width", "quality"] {
-                if let Some(v) = args.get(k) {
-                    a[k] = v.clone();
-                }
-            }
-            let r = call_companion(state, "capture", a, None, 30).await?;
+            carry(args, &["max_width", "quality"], &mut a);
+            let r = call_companion(state, cmd_for(name), a, None, 30).await?;
             let b64 = r
                 .get("base64")
                 .and_then(Value::as_str)
@@ -126,13 +119,13 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
         }
         "client_babele" => {
             let mut a = json!({});
-            for k in ["query", "pack", "id", "name", "ids", "limit"] {
-                if let Some(v) = args.get(k) {
-                    a[k] = v.clone();
-                }
-            }
+            carry(
+                args,
+                &["query", "pack", "id", "name", "ids", "limit"],
+                &mut a,
+            );
             Ok(text_response(
-                &call_companion(state, "babele", a, None, 20).await?,
+                &call_companion(state, cmd_for(name), a, None, 20).await?,
             ))
         }
         "client_scene_report" => {
@@ -141,7 +134,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 a["include_walls"] = v.clone();
             }
             Ok(text_response(
-                &call_companion(state, "scene_report", a, None, 20).await?,
+                &call_companion(state, cmd_for(name), a, None, 20).await?,
             ))
         }
         other => bail!("Unknown tool: {other}"),

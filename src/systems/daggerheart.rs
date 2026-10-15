@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use crate::foundry::documents::get_path;
 use crate::mcp::McpState;
+use crate::tools::ToolDef;
 use crate::tools::{post_chat, str_arg, text_response};
 
 pub const TRAITS: [&str; 6] = [
@@ -101,8 +102,17 @@ fn result_json(r: &DualityResult) -> Value {
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
+/// Construites une fois : `handles` est appelé pour chaque module à chaque
+/// dispatch, et rebâtir les schémas json! à chaque fois coûtait une
+/// allocation par outil pour une simple question d'appartenance.
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+fn build_definitions() -> Vec<ToolDef> {
     vec![
         ("dh_roll_duality",
          "Daggerheart Duality Dice (2d12 Hope+Fear): doubles = critical success, advantage ±d6. Posts to chat.",

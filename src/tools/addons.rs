@@ -7,15 +7,24 @@
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
-use super::companion::call_companion;
-use super::{str_arg, text_response};
+use super::companion::{call_companion, cmd_for};
+use super::{ToolDef, str_arg, text_response};
 use crate::foundry::documents::get_path;
 use crate::mcp::McpState;
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
+/// Construites une fois : `handles` est appelé pour chaque module à chaque
+/// dispatch, et rebâtir les schémas json! à chaque fois coûtait une
+/// allocation par outil pour une simple question d'appartenance.
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+fn build_definitions() -> Vec<ToolDef> {
     vec![
         ("mat_list",
          "Monk's Active Tiles: list the trigger-tiles on a scene (default: active scene) — _id, name/label, trigger type(s), action count. Read-only (documents).",
@@ -103,7 +112,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(t) = args.get("tokens") {
                 a["tokens"] = t.clone();
             }
-            let r = call_companion(state, "mat_trigger", a, None, 20).await?;
+            let r = call_companion(state, cmd_for(name), a, None, 20).await?;
             Ok(text_response(&r))
         }
         "client_seq_between" => {
@@ -113,7 +122,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let to = str_arg(args, "to_token").ok_or_else(|| anyhow!("'to_token' is required"))?;
             let a = json!({ "file": file, "fromTokenId": from, "toTokenId": to,
                 "scale": args.get("scale").cloned().unwrap_or(json!(1)) });
-            let r = call_companion(state, "seq_between", a, None, 20).await?;
+            let r = call_companion(state, cmd_for(name), a, None, 20).await?;
             Ok(text_response(&r))
         }
         "client_seq_sound" => {
@@ -122,7 +131,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(v) = args.get("volume") {
                 a["volume"] = v.clone();
             }
-            let r = call_companion(state, "seq_sound", a, None, 10).await?;
+            let r = call_companion(state, cmd_for(name), a, None, 10).await?;
             Ok(text_response(&r))
         }
         other => bail!("Unknown tool: {other}"),

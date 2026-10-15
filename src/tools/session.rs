@@ -4,7 +4,7 @@
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Map, Value, json};
 
-use super::{str_arg, text_response};
+use super::{ToolDef, str_arg, text_response};
 use crate::mcp::McpState;
 
 /// Statuts core Foundry v13 (CONFIG.statusEffects) : id → (nom, icône).
@@ -40,8 +40,17 @@ pub const CORE_STATUS_EFFECTS: [(&str, &str, &str); 27] = [
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
+/// Construites une fois : `handles` est appelé pour chaque module à chaque
+/// dispatch, et rebâtir les schémas json! à chaque fois coûtait une
+/// allocation par outil pour une simple question d'appartenance.
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+fn build_definitions() -> Vec<ToolDef> {
     vec![
         ("show_journal_to_players",
          "Show a JournalEntry to connected players (GM 'Show to Players'). force overrides permissions.",

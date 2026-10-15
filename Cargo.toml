@@ -1,8 +1,8 @@
 [package]
 name = "foundry-mcp-gateway"
-version = "1.5.0"
+version = "1.6.0"
 edition = "2024"
-description = "MCP server for Foundry VTT: a native socket client exposing 134 tools over streamable HTTP, with pluggable game-system modules."
+description = "MCP server for Foundry VTT: a native socket client exposing 135 tools over streamable HTTP, with pluggable game-system modules."
 license = "MIT"
 repository = "https://github.com/wanoo/foundry-mcp-gateway"
 homepage = "https://github.com/wanoo/foundry-mcp-gateway"
@@ -34,6 +34,10 @@ anyhow = "1"
 futures-util = "0.3"
 uuid = { version = "1", features = ["v4"] }
 regex = "1"
+p256 = { version = "0.14.0", default-features = false, features = ["ecdsa"] }
+sha2 = "0.11.0"
+hex = "0.4.3"
+biscuit-auth = "6.0.0"
 
 [profile.release]
 lto = true

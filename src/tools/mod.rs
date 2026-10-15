@@ -6,6 +6,7 @@ pub mod addons;
 pub mod admin;
 pub mod cc_family;
 pub mod companion;
+pub mod generic;
 pub mod insight;
 pub mod manage;
 pub mod markdown;
@@ -16,9 +17,15 @@ pub mod transfer;
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Map, Value, json};
 
-use crate::foundry::documents::{can_use_index, filter_fields, get_path};
 use crate::mcp::McpState;
 use crate::systems;
+
+/// Définition d'un outil : (nom, description, schéma JSON des arguments).
+///
+/// `&'static str` : ce sont des littéraux du code, jamais dérivés de l'état —
+/// ce qui permet de les construire une seule fois par module (voir les `DEFS`
+/// paresseux) au lieu de rebâtir les schémas à chaque dispatch.
+pub type ToolDef = (&'static str, &'static str, Value);
 
 pub const COLLECTIONS: [(&str, &str, &str); 13] = [
     ("actors", "actor", "actor"),
@@ -110,6 +117,17 @@ pub fn roll_table_draws(table: &Value, modifier: i64, rolls: usize) -> Result<Ve
         .ok_or_else(|| anyhow!("Unsupported table formula '{formula}' (expected NdM±k)"))?;
     let n: i64 = caps[1].parse()?;
     let m: i64 = caps[2].parse()?;
+    // La formule vient de la RollTable du MONDE, pas de l'appelant : Foundry
+    // accepte « 1d0 » à la création, et `% m` panique dessus. `n` non borné
+    // bloquerait un worker tokio pour l'éternité. On cite la formule fautive
+    // parce que apply_critical_injury emprunte ce chemin avec une table
+    // AUTO-DÉTECTÉE par nom : sans ça, le MJ n'a aucun moyen de la retrouver.
+    if !(1..=1000).contains(&m) {
+        bail!("Unsupported table formula '{formula}': die size must be between 1 and 1000");
+    }
+    if !(1..=100).contains(&n) {
+        bail!("Unsupported table formula '{formula}': dice count must be between 1 and 100");
+    }
     let k: i64 = caps
         .get(3)
         .map(|c| c.as_str().parse().unwrap_or(0))
@@ -145,13 +163,27 @@ pub fn roll_table_draws(table: &Value, modifier: i64, rolls: usize) -> Result<Ve
 }
 
 /// Troncature par taille JSON (compat `max_length` du serveur TS).
-fn truncate_by_bytes(mut docs: Vec<Value>, max_length: Option<usize>) -> Vec<Value> {
+///
+/// Une seule passe : la longueur de `[a,b,c]` vaut 2 + Σ len(item) + les
+/// virgules, donc un cumul suffit. L'implémentation précédente clonait TOUT le
+/// vecteur et le re-sérialisait à chaque document abandonné — quadratique, et
+/// c'était le point chaud d'un `get_actors` avec `max_length` sur un monde
+/// chargé. Sémantique inchangée : on ne coupe jamais au milieu d'un document.
+pub(super) fn truncate_by_bytes(mut docs: Vec<Value>, max_length: Option<usize>) -> Vec<Value> {
     let Some(max) = max_length.filter(|m| *m > 0) else {
         return docs;
     };
-    while !docs.is_empty() && Value::Array(docs.clone()).to_string().len() > max {
-        docs.pop();
+    let mut total = 2; // les crochets
+    let mut kept = 0;
+    for d in &docs {
+        let len = d.to_string().len() + usize::from(kept > 0); // virgule séparatrice
+        if total + len > max {
+            break;
+        }
+        total += len;
+        kept += 1;
     }
+    docs.truncate(kept);
     docs
 }
 
@@ -179,6 +211,19 @@ pub fn is_read_only(name: &str) -> bool {
                 | "client_weather_types"
                 | "client_token_fx_presets"
                 | "client_effect_catalog"
+                // Ces huit-là manquaient : ils ne touchent à rien mais étaient
+                // refusés en mode FOUNDRY_READONLY, qui était donc plus strict
+                // que ce que la doc annonce. La liste est manuelle et a déjà
+                // dérivé ; `liste_lecture_seule_sans_fantome` attrape au moins
+                // le cas d'un nom qui survit à un outil renommé ou supprimé.
+                | "browse_files"
+                | "show_credentials"
+                | "cc_list_sheets"
+                | "cc_get_sheet"
+                | "al_find"
+                | "mc_get_time"
+                | "mc_list_notes"
+                | "mat_list"
         )
 }
 
@@ -317,23 +362,26 @@ pub fn definitions(state: &McpState) -> Vec<Value> {
         }}),
     ));
     // Outils de séance, gestion, Campaign Codex, et modules système.
+    let admin_defs = admin::definitions(state);
+    let system_defs: Vec<&ToolDef> = systems::loaded_modules()
+        .iter()
+        .flat_map(|m| (m.definitions)().iter())
+        .collect();
     for (name, desc, schema) in session::definitions()
-        .into_iter()
+        .iter()
         .chain(manage::definitions())
         .chain(cc_family::definitions())
         .chain(addons::definitions())
         .chain(insight::definitions())
         .chain(table::definitions())
-        .chain(admin::definitions(state))
+        .chain(admin_defs.iter().copied())
         .chain(transfer::definitions())
         .chain(companion::definitions())
-        .chain(
-            systems::loaded_modules()
-                .iter()
-                .flat_map(|m| (m.definitions)()),
-        )
+        .chain(system_defs)
     {
-        tools.push(tool(name, desc, schema));
+        // Un clone du schéma par appel à tools/list — rare, et le prix à payer
+        // pour que `handles()` ne reconstruise plus rien sur le chemin chaud.
+        tools.push(tool(name, desc, schema.clone()));
     }
     if state.readonly {
         tools.retain(|t| {
@@ -343,6 +391,20 @@ pub fn definitions(state: &McpState) -> Vec<Value> {
         });
     }
     tools
+}
+
+/// Recopie les clés PRÉSENTES d'un Value vers un autre.
+///
+/// Le patron des proxys vers le compagnon : les arguments optionnels ne sont
+/// transmis que s'ils ont été fournis, pour que le module navigateur applique
+/// ses propres valeurs par défaut. Était réécrit en boucle inline dans cinq
+/// modules ; une seule définition évite qu'ils divergent.
+pub fn carry(args: &Value, keys: &[&str], out: &mut Value) {
+    for k in keys {
+        if let Some(v) = args.get(*k) {
+            out[*k] = v.clone();
+        }
+    }
 }
 
 pub fn str_arg(args: &Value, key: &str) -> Option<String> {
@@ -405,7 +467,7 @@ pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Valu
     } else if systems::loaded_modules().iter().any(|m| (m.handles)(name)) {
         systems::run(state, name, args).await
     } else {
-        run_tool(state, name, args).await
+        generic::run_tool(state, name, args).await
     };
     match result {
         Ok(v) => Ok(v),
@@ -413,531 +475,231 @@ pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Valu
     }
 }
 
-async fn run_tool(state: &McpState, name: &str, args: &Value) -> Result<Value> {
-    let foundry = &state.foundry;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    // Paires générées get_<pluriel> / get_<singulier>
-    for (plural, singular, _) in COLLECTIONS {
-        if name == format!("get_{plural}") {
-            let fields = fields_arg(args);
-            let where_ = where_arg(args);
-            let docs = foundry
-                .get_documents(
-                    plural_to_collection(plural),
-                    where_.as_ref(),
-                    fields.as_deref(),
-                    args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize,
-                    args.get("limit")
-                        .and_then(Value::as_u64)
-                        .map(|l| l as usize),
-                )
-                .await?;
-            let docs = truncate_by_bytes(
-                docs,
-                args.get("max_length")
-                    .and_then(Value::as_u64)
-                    .map(|m| m as usize),
-            );
-            return Ok(text_response(&Value::Array(docs)));
-        }
-        if name == format!("get_{singular}") {
-            let id = str_arg(args, "_id").or_else(|| str_arg(args, "id"));
-            let doc_name = str_arg(args, "name");
-            if id.is_none() && doc_name.is_none() {
-                bail!("Must provide one of: _id, id, or name");
-            }
-            let fields = fields_arg(args);
-            let doc = foundry
-                .get_document(
-                    plural_to_collection(plural),
-                    id.as_deref(),
-                    doc_name.as_deref(),
-                    fields.as_deref(),
-                )
-                .await?;
-            return Ok(match doc {
-                Some(d) => text_response(&d),
-                None => text_response(&json!(format!("{singular} not found"))),
-            });
-        }
-    }
-
-    match name {
-        "ping" => {
-            let hostname = foundry.hostname().to_string();
-            let status = crate::foundry::auth_status(&foundry.http, &hostname).await;
-            Ok(text_response(&json!({
-                "connected": foundry.is_connected(),
-                "hostname": hostname,
-                "userId": foundry.user_id().await,
-                "generation": foundry.generation().await,
-                "eventSeq": foundry.event_seq(),
-                "server": status,
-            })))
-        }
-        "get_world" => {
-            let mut world = foundry.request_world().await?;
-            if let Some(obj) = world.as_object_mut() {
-                for key in [
-                    "actors",
-                    "items",
-                    "folders",
-                    "users",
-                    "scenes",
-                    "journal",
-                    "macros",
-                    "cards",
-                    "playlists",
-                    "tables",
-                    "combats",
-                    "messages",
-                    "packs",
-                ] {
-                    obj.remove(key);
-                }
-            }
-            Ok(text_response(&world))
-        }
-        "get_current_scene" => {
-            let where_: Map<String, Value> = json!({"active": true}).as_object().cloned().unwrap();
-            let fields = fields_arg(args).unwrap_or_else(|| {
-                [
-                    "_id",
-                    "name",
-                    "active",
-                    "navigation",
-                    "navName",
-                    "background",
-                ]
-                .iter()
-                .map(|s| s.to_string())
-                .collect()
-            });
-            let docs = foundry
-                .get_documents("scenes", Some(&where_), Some(&fields), 0, Some(1))
-                .await?;
-            Ok(match docs.into_iter().next() {
-                Some(d) => text_response(&d),
-                None => {
-                    text_response(&json!({"active": null, "note": "No scene is currently active"}))
-                }
-            })
-        }
-        "search_journals" => {
-            let query = str_arg(args, "query").ok_or_else(|| anyhow!("'query' is required"))?;
-            let max = args
-                .get("max_results")
-                .and_then(Value::as_u64)
-                .unwrap_or(20) as usize;
-            let docs = foundry
-                .get_documents("journal", None, None, 0, None)
-                .await?;
-            let needle = query.to_lowercase();
-            let strip = regex::Regex::new(r"<[^>]+>").unwrap();
-            let mut hits = Vec::new();
-            'outer: for j in &docs {
-                let jname = j.get("name").and_then(Value::as_str).unwrap_or("");
-                if jname.to_lowercase().contains(&needle) {
-                    hits.push(json!({"_id": j["_id"], "name": jname, "match": "name"}));
-                }
-                for p in j.get("pages").and_then(Value::as_array).unwrap_or(&vec![]) {
-                    if hits.len() >= max {
-                        break 'outer;
-                    }
-                    let content = p
-                        .pointer("/text/content")
-                        .and_then(Value::as_str)
-                        .unwrap_or("");
-                    let text = strip.replace_all(content, " ");
-                    let lower = text.to_lowercase();
-                    if let Some(idx) = lower.find(&needle) {
-                        let start = idx.saturating_sub(80);
-                        let end = (idx + needle.len() + 80).min(text.len());
-                        let snippet: String = text
-                            .char_indices()
-                            .filter(|(i, _)| *i >= start && *i < end)
-                            .map(|(_, c)| c)
-                            .collect();
-                        hits.push(json!({
-                            "_id": j["_id"], "name": jname, "match": "content",
-                            "page": {"_id": p["_id"], "name": p["name"]},
-                            "snippet": snippet.split_whitespace().collect::<Vec<_>>().join(" "),
-                        }));
-                    }
-                }
-                if hits.len() >= max {
-                    break;
-                }
-            }
-            Ok(text_response(&Value::Array(hits)))
-        }
-        "list_compendium_packs" => {
-            let world = foundry.request_world().await?;
-            let packs = world
-                .get("packs")
-                .and_then(Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .map(|p| {
-                            json!({
-                                "id": p.get("id").or(p.get("collection")).cloned(),
-                                "label": p.get("label").cloned(),
-                                "type": p.get("type").or(p.get("documentName")).cloned(),
-                                "system": p.get("system").cloned(),
-                            })
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            Ok(text_response(&Value::Array(packs)))
-        }
-        "get_pack_documents" => {
-            let doc_type = str_arg(args, "type").ok_or_else(|| anyhow!("'type' is required"))?;
-            let pack = str_arg(args, "pack").ok_or_else(|| anyhow!("'pack' is required"))?;
-            let query = args
-                .get("query")
-                .and_then(Value::as_object)
-                .cloned()
-                .unwrap_or_default();
-            let fields = fields_arg(args);
-            let use_index = can_use_index(fields.as_deref(), Some(&query));
-            let mut docs = foundry
-                .get_collection(&doc_type, query.clone(), use_index, Some(&pack))
-                .await?;
-            if use_index && !docs.is_empty() && docs.iter().any(|d| d.get("_id").is_none()) {
-                docs = foundry
-                    .get_collection(&doc_type, query, false, Some(&pack))
-                    .await?;
-            }
-            let out: Vec<Value> = docs
-                .iter()
-                .map(|d| filter_fields(d, fields.as_deref()))
-                .collect();
-            let out = truncate_by_bytes(
-                out,
-                args.get("max_length")
-                    .and_then(Value::as_u64)
-                    .map(|m| m as usize),
-            );
-            Ok(text_response(&Value::Array(out)))
-        }
-        "create_document" | "modify_document" | "delete_document" => {
-            let doc_type = str_arg(args, "type").ok_or_else(|| anyhow!("'type' is required"))?;
-            let mut op = json!({ "broadcast": false });
-            if let Some(p) = str_arg(args, "parent_uuid") {
-                op["parentUuid"] = json!(p);
-            }
-            if let Some(p) = str_arg(args, "pack") {
-                op["pack"] = json!(p);
-            }
-            let action = match name {
-                "create_document" => {
-                    let data = args
-                        .get("data")
-                        .and_then(Value::as_array)
-                        .ok_or_else(|| anyhow!("'data' (array) is required"))?;
-                    op["data"] = json!(data);
-                    op["keepId"] = json!(
-                        args.get("keep_id")
-                            .and_then(Value::as_bool)
-                            .unwrap_or(false)
-                    );
-                    op["renderSheet"] = json!(false);
-                    "create"
-                }
-                "modify_document" => {
-                    let id = str_arg(args, "_id").ok_or_else(|| anyhow!("'_id' is required"))?;
-                    let updates = args
-                        .get("updates")
-                        .and_then(Value::as_array)
-                        .ok_or_else(|| anyhow!("'updates' (array) is required"))?;
-                    let with_ids: Vec<Value> = updates
-                        .iter()
-                        .map(|u| {
-                            let mut u = u.clone();
-                            u["_id"] = json!(id);
-                            u
-                        })
-                        .collect();
-                    op["updates"] = json!(with_ids);
-                    op["diff"] = json!(false);
-                    op["recursive"] = json!(true);
-                    "update"
-                }
-                _ => {
-                    let ids = args
-                        .get("ids")
-                        .and_then(Value::as_array)
-                        .ok_or_else(|| anyhow!("'ids' (array) is required"))?;
-                    op["ids"] = json!(ids);
-                    "delete"
-                }
-            };
-            op["action"] = json!(action);
-            let result = foundry.modify_document(&doc_type, action, op).await?;
-            Ok(text_response(&result))
-        }
-        "get_events" => {
-            let since = args.get("since_seq").and_then(Value::as_u64).unwrap_or(0);
-            let event = str_arg(args, "event");
-            let limit = args
-                .get("limit")
-                .and_then(Value::as_u64)
-                .map(|l| l as usize);
-            let (last_seq, events) = foundry.get_events(since, event.as_deref(), limit).await;
-            let events: Vec<Value> = events
-                .into_iter()
-                .map(|e| json!({"seq": e.seq, "event": e.event, "args": e.args}))
-                .collect();
-            Ok(text_response(
-                &json!({"lastSeq": last_seq, "count": events.len(), "events": events}),
-            ))
-        }
-        _ => bail!("Unknown tool: {name}"),
-    }
-}
-
-// --- Ressources MCP ------------------------------------------------------------
-
-const PAGE_SIZE: usize = 100;
-
-pub async fn resources_list(state: &McpState, cursor: Option<&str>) -> Result<Value> {
-    let (section, offset) = match cursor {
-        None => ("a", 0),
-        Some(c) => {
-            let (s, o) = c
-                .split_once(':')
-                .ok_or_else(|| anyhow!("Invalid cursor: {c}"))?;
-            (
-                match s {
-                    "a" => "a",
-                    "j" => "j",
-                    _ => bail!("Invalid cursor: {c}"),
-                },
-                o.parse::<usize>().unwrap_or(0),
-            )
-        }
-    };
-    let fields = vec!["_id".to_string(), "name".to_string()];
-    let (collection, uri_section, mime, next_section) = match section {
-        "a" => ("actors", "actors", "application/json", Some("j:0")),
-        _ => ("journal", "journal", "text/html", None),
-    };
-    let docs = state
-        .foundry
-        .get_documents(collection, None, Some(&fields), 0, None)
-        .await?;
-    let page: Vec<Value> = docs
-        .iter()
-        .skip(offset)
-        .take(PAGE_SIZE)
-        .map(|d| {
-            json!({
-                "uri": format!("foundry://{uri_section}/{}", d["_id"].as_str().unwrap_or("")),
-                "name": d["name"],
-                "mimeType": mime,
-            })
+    /// Une table à trois plages contiguës, comme en produit Foundry.
+    fn table(formula: &str) -> Value {
+        json!({
+            "formula": formula,
+            "results": [
+                {"range": [1, 1], "text": "un"},
+                {"range": [2, 2], "text": "deux"},
+                {"range": [3, 3], "text": "trois"},
+            ]
         })
-        .collect();
-    let next = if offset + PAGE_SIZE < docs.len() {
-        Some(format!("{section}:{}", offset + PAGE_SIZE))
-    } else {
-        next_section.map(String::from)
-    };
-    let mut out = json!({ "resources": page });
-    if let Some(n) = next {
-        out["nextCursor"] = json!(n);
     }
-    Ok(out)
-}
 
-pub async fn resources_read(state: &McpState, uri: &str) -> Result<Value> {
-    let re = regex::Regex::new(r"^foundry://(actors|journal)/([A-Za-z0-9]+)$").unwrap();
-    let caps = re
-        .captures(uri)
-        .ok_or_else(|| anyhow!("Unknown resource URI: {uri}"))?;
-    let collection = caps.get(1).unwrap().as_str();
-    let id = caps.get(2).unwrap().as_str();
-    let doc = state
-        .foundry
-        .get_document(collection, Some(id), None, None)
-        .await?
-        .ok_or_else(|| anyhow!("Resource not found: {uri}"))?;
+    /// Tous les modules qui revendiquent des noms, dans l'ordre du dispatch.
+    /// (id du module, prédicat d'appartenance).
+    type Owner = (&'static str, fn(&str) -> bool);
 
-    if collection == "actors" {
-        return Ok(json!({ "contents": [{
-            "uri": uri, "mimeType": "application/json", "text": doc.to_string(),
-        }]}));
+    fn owners() -> Vec<Owner> {
+        let mut v: Vec<Owner> = vec![
+            ("session", session::handles),
+            ("manage", manage::handles),
+            ("cc_family", cc_family::handles),
+            ("addons", addons::handles),
+            ("insight", insight::handles),
+            ("table", table::handles),
+            ("admin", admin::handles),
+            ("transfer", transfer::handles),
+            ("companion", companion::handles),
+        ];
+        v.extend(systems::all_modules().iter().map(|m| (m.id, m.handles)));
+        v
     }
-    let name = doc.get("name").and_then(Value::as_str).unwrap_or("");
-    let mut html = format!("<h1>{name}</h1>");
-    for p in doc
-        .get("pages")
-        .and_then(Value::as_array)
-        .unwrap_or(&vec![])
-    {
-        let pname = p.get("name").and_then(Value::as_str).unwrap_or("");
-        let content = p
-            .pointer("/text/content")
-            .and_then(Value::as_str)
-            .unwrap_or("");
-        html.push_str(&format!("\n<h2>{pname}</h2>\n{content}"));
-    }
-    let mut contents = vec![json!({ "uri": uri, "mimeType": "text/html", "text": html })];
-    if let Some(cc) = get_path(&doc, "flags.campaign-codex") {
-        contents.push(json!({
-            "uri": format!("{uri}#campaign-codex"),
-            "mimeType": "application/json",
-            "text": cc.to_string(),
-        }));
-    }
-    Ok(json!({ "contents": contents }))
-}
 
-// --- Prompts MCP ---------------------------------------------------------------
-
-pub fn prompt_definitions() -> Vec<Value> {
-    vec![
-        json!({ "name": "session-recap",
-            "description": "Résumer la dernière séance à partir des messages de chat récents.",
-            "arguments": [{ "name": "max_messages", "required": false }] }),
-        json!({ "name": "world-overview",
-            "description": "Brief de l'état du monde : scène active, combats, joueurs connectés.",
-            "arguments": [] }),
-        json!({ "name": "prep-checklist",
-            "description": "Vérifier la préparation d'une scène : tokens, playlists — et lister ce qui manque.",
-            "arguments": [{ "name": "scene", "required": false }] }),
-    ]
-}
-
-pub async fn prompts_get(state: &McpState, name: &str, args: &Value) -> Result<Value> {
-    let foundry = &state.foundry;
-    let strip = regex::Regex::new(r"<[^>]+>").unwrap();
-    match name {
-        "session-recap" => {
-            let max = args
-                .get("max_messages")
-                .and_then(Value::as_str)
-                .and_then(|s| s.parse::<usize>().ok())
-                .unwrap_or(50);
-            let messages = foundry
-                .get_documents("messages", None, None, 0, None)
-                .await?;
-            let recent: Vec<String> = messages
-                .iter()
-                .rev()
-                .take(max)
-                .rev()
-                .map(|m| {
-                    let content = m.get("content").and_then(Value::as_str).unwrap_or("");
-                    format!(
-                        "- {}",
-                        strip
-                            .replace_all(content, " ")
-                            .split_whitespace()
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    )
-                })
-                .collect();
-            Ok(json!({
-                "description": format!("Résumé de séance sur {} messages", recent.len()),
-                "messages": [{ "role": "user", "content": { "type": "text", "text": format!(
-                    "Voici les {} derniers messages du chat (du plus ancien au plus récent) :\n\n{}\n\nRédige un résumé de séance structuré : événements marquants, jets décisifs, décisions, fils ouverts.",
-                    recent.len(), recent.join("\n")
-                )}}]
-            }))
+    /// Le vrai livrable du lot : chaque outil appartient à exactement un module.
+    ///
+    /// À zéro propriétaire, l'outil est annoncé dans `tools/list` puis répond
+    /// « Unknown tool ». À deux, le gagnant dépend de l'ordre des `else if` du
+    /// dispatch — c'est exactement ce qui « protégeait » companion.rs par
+    /// accident, avec son `starts_with("client_")` qui revendiquait 40 outils
+    /// pour onze traités.
+    #[test]
+    fn chaque_outil_a_un_seul_proprietaire() {
+        let mut noms: Vec<&'static str> = Vec::new();
+        for (_, defs) in [
+            ("session", session::definitions()),
+            ("manage", manage::definitions()),
+            ("cc_family", cc_family::definitions()),
+            ("addons", addons::definitions()),
+            ("insight", insight::definitions()),
+            ("table", table::definitions()),
+            ("transfer", transfer::definitions()),
+            ("companion", companion::definitions()),
+        ] {
+            noms.extend(defs.iter().map(|(n, _, _)| *n));
         }
-        "world-overview" => {
-            let hostname = foundry.hostname().to_string();
-            let status = crate::foundry::auth_status(&foundry.http, &hostname).await;
-            let fields = vec!["_id".to_string(), "name".to_string()];
-            let where_ = json!({"active": true}).as_object().cloned().unwrap();
-            let scenes = foundry
-                .get_documents("scenes", Some(&where_), Some(&fields), 0, Some(1))
-                .await?;
-            let combats = foundry
-                .get_documents("combats", None, Some(&fields), 0, None)
-                .await?;
-            let scene = scenes
-                .first()
-                .and_then(|s| s.get("name"))
-                .and_then(Value::as_str)
-                .unwrap_or("aucune");
-            Ok(json!({
-                "description": "Brief de l'état du monde",
-                "messages": [{ "role": "user", "content": { "type": "text", "text": format!(
-                    "État du monde Foundry « {} » (v{}) :\n- Scène active : {}\n- Combats en cours : {}\n- Joueurs connectés : {}\n\nFais-moi un brief de reprise MJ.",
-                    status.as_ref().and_then(|s| s.get("world")).and_then(Value::as_str).unwrap_or("?"),
-                    status.as_ref().and_then(|s| s.get("version")).and_then(Value::as_str).unwrap_or("?"),
-                    scene,
-                    combats.len(),
-                    status.as_ref().and_then(|s| s.get("users")).and_then(Value::as_u64).unwrap_or(0),
-                )}}]
-            }))
+        noms.extend(admin::DEFS_FOR_TEST.iter().map(|(n, _, _)| *n));
+        for m in systems::all_modules() {
+            noms.extend((m.definitions)().iter().map(|(n, _, _)| *n));
         }
-        "prep-checklist" => {
-            let scene = match args.get("scene").and_then(Value::as_str) {
-                Some(s) => {
-                    state
-                        .foundry
-                        .find_document(
-                            "scenes",
-                            s,
-                            Some(&["_id".into(), "name".into(), "tokens".into()]),
-                        )
-                        .await?
-                }
-                None => {
-                    let w = json!({"active": true}).as_object().cloned().unwrap();
-                    state
-                        .foundry
-                        .get_documents(
-                            "scenes",
-                            Some(&w),
-                            Some(&["_id".into(), "name".into(), "tokens".into()]),
-                            0,
-                            Some(1),
-                        )
-                        .await?
-                        .into_iter()
-                        .next()
-                }
-            };
-            let scene_name = scene
-                .as_ref()
-                .and_then(|s| s.get("name"))
-                .and_then(Value::as_str)
-                .unwrap_or("?")
-                .to_string();
-            let empty = vec![];
-            let tokens: Vec<&str> = scene
-                .as_ref()
-                .and_then(|s| s.get("tokens"))
-                .and_then(Value::as_array)
-                .unwrap_or(&empty)
+
+        for nom in &noms {
+            let proprietaires: Vec<&str> = owners()
                 .iter()
-                .filter_map(|t| t.get("name").and_then(Value::as_str))
+                .filter(|(_, h)| h(nom))
+                .map(|(id, _)| *id)
                 .collect();
-            let fields = vec!["_id".into(), "name".into()];
-            let playlists = state
-                .foundry
-                .get_documents("playlists", None, Some(&fields), 0, None)
-                .await?;
-            let pl_names: Vec<&str> = playlists
-                .iter()
-                .filter_map(|p| p.get("name").and_then(Value::as_str))
-                .collect();
-            Ok(json!({
-                "description": format!("Checklist de préparation — {scene_name}"),
-                "messages": [{ "role": "user", "content": { "type": "text", "text": format!(
-                    "Préparation de la scène « {scene_name} » :\n- Tokens posés ({}) : {}\n- Playlists disponibles : {}\n\nAnalyse cette préparation : qu'est-ce qui manque probablement (adversaires, ambiance, handouts, éclairage) pour jouer cette scène confortablement ?",
-                    tokens.len(),
-                    if tokens.is_empty() { "aucun".to_string() } else { tokens.join(", ") },
-                    if pl_names.is_empty() { "aucune".to_string() } else { pl_names.join(", ") },
-                )}}]
-            }))
+            assert_eq!(
+                proprietaires.len(),
+                1,
+                "l'outil « {nom} » a {} propriétaires : {proprietaires:?}",
+                proprietaires.len()
+            );
         }
-        _ => bail!("Unknown prompt: {name}"),
+
+        // Et les outils générés depuis COLLECTIONS ne doivent être revendiqués
+        // par PERSONNE : ils tombent volontairement dans run_tool.
+        for (plural, singular, _) in COLLECTIONS {
+            for nom in [format!("get_{plural}"), format!("get_{singular}")] {
+                let revendique: Vec<&str> = owners()
+                    .iter()
+                    .filter(|(_, h)| h(&nom))
+                    .map(|(id, _)| *id)
+                    .collect();
+                assert!(
+                    revendique.is_empty(),
+                    "« {nom} » est générique mais revendiqué par {revendique:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn liste_lecture_seule_sans_fantome() {
+        // Chaque nom cité en dur dans is_read_only doit exister : la liste est
+        // manuelle, et un outil renommé y laisserait un fantôme silencieux.
+        let mut noms: Vec<&'static str> = Vec::new();
+        for defs in [
+            session::definitions(),
+            manage::definitions(),
+            cc_family::definitions(),
+            addons::definitions(),
+            insight::definitions(),
+            table::definitions(),
+            transfer::definitions(),
+            companion::definitions(),
+        ] {
+            noms.extend(defs.iter().map(|(n, _, _)| *n));
+        }
+        noms.extend(admin::DEFS_FOR_TEST.iter().map(|(n, _, _)| *n));
+        for nom in [
+            "admin_status",
+            "admin_check_package",
+            "admin_list_backups",
+            "search_journals",
+            "ping",
+            "export_journals",
+            "client_status",
+            "client_get_state",
+            "client_get_derived",
+            "client_enrich",
+            "client_search",
+            "client_capture",
+            "client_scene_report",
+            "client_babele",
+            "client_weather_types",
+            "client_token_fx_presets",
+            "client_effect_catalog",
+            "browse_files",
+            "show_credentials",
+            "cc_list_sheets",
+            "cc_get_sheet",
+            "al_find",
+            "mc_get_time",
+            "mc_list_notes",
+            "mat_list",
+        ] {
+            // `ping`, `search_journals` et `export_journals` sont génériques.
+            if matches!(nom, "ping" | "search_journals" | "export_journals") {
+                continue;
+            }
+            assert!(
+                noms.contains(&nom),
+                "is_read_only cite « {nom} », qui n'existe plus"
+            );
+        }
+
+        // En miroir : rien qui écrit ne doit être classé lecture seule.
+        for nom in noms {
+            if nom.starts_with("delete_")
+                || nom.starts_with("create_")
+                || nom.starts_with("modify_")
+                || nom.starts_with("adjust_")
+            {
+                assert!(
+                    !is_read_only(nom),
+                    "« {nom} » écrit mais est classé lecture seule"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn troncature_par_octets() {
+        let docs = || vec![json!({"a": 1}), json!({"b": 2}), json!({"c": 3})];
+        let taille = |v: &[Value]| Value::Array(v.to_vec()).to_string().len();
+
+        // Sans limite : intact.
+        assert_eq!(truncate_by_bytes(docs(), None).len(), 3);
+        assert_eq!(truncate_by_bytes(docs(), Some(0)).len(), 3);
+
+        // Borne exacte : la sortie complète passe tout juste.
+        let exact = taille(&docs());
+        assert_eq!(truncate_by_bytes(docs(), Some(exact)).len(), 3);
+        assert_eq!(truncate_by_bytes(docs(), Some(exact - 1)).len(), 2);
+
+        // Trop petit pour le premier document : vide, jamais tronqué au milieu.
+        assert!(truncate_by_bytes(docs(), Some(3)).is_empty());
+
+        // Invariant fort : la sortie reste du JSON valide et tient dans max.
+        for max in 1..60 {
+            let out = truncate_by_bytes(docs(), Some(max));
+            let s = Value::Array(out).to_string();
+            assert!(serde_json::from_str::<Vec<Value>>(&s).is_ok());
+            assert!(s.len() <= max || s == "[]", "max={max} → {s}");
+        }
+    }
+
+    #[test]
+    fn formule_de_table_refusee() {
+        // « 1d0 » est acceptée par Foundry à la création et faisait paniquer
+        // le tirage sur `% 0` — c'est une donnée du MONDE, jamais de l'appelant.
+        assert!(roll_table_draws(&table("1d0"), 0, 1).is_err());
+        assert!(roll_table_draws(&table("0d6"), 0, 1).is_err());
+        // Non borné, celui-ci bloquait un worker tokio pour toujours.
+        assert!(roll_table_draws(&table("999999999d6"), 0, 1).is_err());
+        // Le message doit citer la formule : apply_critical_injury choisit sa
+        // table par NOM, donc le MJ n'a pas d'autre indice pour la retrouver.
+        let err = roll_table_draws(&table("1d0"), 0, 1)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("1d0"),
+            "message sans la formule fautive : {err}"
+        );
+    }
+
+    #[test]
+    fn formule_de_table_acceptee() {
+        assert!(roll_table_draws(&table("1d100+5"), 0, 1).is_ok());
+        assert!(roll_table_draws(&table("2d6-1"), 0, 1).is_ok());
+        assert!(roll_table_draws(&table("1d3"), 0, 1).is_ok());
+    }
+
+    #[test]
+    fn tirage_deterministe_en_1d1() {
+        // 1d1 rend toujours 1 : ça épingle la sémantique `k + modifier` et la
+        // sélection par plage, qui n'étaient couvertes par aucun test.
+        let draws = roll_table_draws(&table("1d1"), 0, 1).unwrap();
+        assert_eq!(draws.len(), 1);
+        assert_eq!(draws[0]["text"], json!("un"));
+        // Le modificateur décale le résultat dans les plages.
+        let draws = roll_table_draws(&table("1d1"), 1, 1).unwrap();
+        assert_eq!(draws[0]["text"], json!("deux"));
     }
 }

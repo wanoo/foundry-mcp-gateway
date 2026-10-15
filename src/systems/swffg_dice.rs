@@ -13,18 +13,52 @@ pub struct FfgPool {
     pub force: u32,
 }
 
+/// Un pool FFG réel dépasse rarement 8 dés d'un type ; 50 laisse la marge de
+/// n'importe quelle maison de règles. Au-delà, ce n'est plus un jet : c'est
+/// `format_pool` qui alloue des mégaoctets d'émojis (`repeat` sur un `usize`
+/// venu du réseau → échec d'allocation → `abort()` du processus, TOUTES les
+/// sessions MCP avec) et `roll_ffg_pool` qui boucle des milliards de fois sur
+/// un worker tokio. On refuse : c'est une erreur d'appel, pas un cas limite.
+pub const MAX_DICE: u64 = 50;
+
 impl FfgPool {
-    pub fn from_args(args: &Value) -> Self {
-        let g = |k: &str| args.get(k).and_then(Value::as_u64).unwrap_or(0) as u32;
-        Self {
-            ability: g("ability"),
-            proficiency: g("proficiency"),
-            difficulty: g("difficulty"),
-            challenge: g("challenge"),
-            boost: g("boost"),
-            setback: g("setback"),
-            force: g("force"),
+    pub fn from_args(args: &Value) -> anyhow::Result<Self> {
+        let g = |k: &str| -> anyhow::Result<u32> {
+            let n = args.get(k).and_then(Value::as_u64).unwrap_or(0);
+            if n > MAX_DICE {
+                anyhow::bail!("'{k}': {n} dice is beyond the maximum of {MAX_DICE}");
+            }
+            Ok(n as u32)
+        };
+        Ok(Self {
+            ability: g("ability")?,
+            proficiency: g("proficiency")?,
+            difficulty: g("difficulty")?,
+            challenge: g("challenge")?,
+            boost: g("boost")?,
+            setback: g("setback")?,
+            force: g("force")?,
+        })
+    }
+
+    /// Même plafond, pour les pools dérivés d'une fiche plus des modificateurs
+    /// d'appel (`roll_actor_skill`) : les valeurs de fiche sont saines, les
+    /// modificateurs viennent de l'appelant.
+    pub fn checked(counts: [u64; 7]) -> anyhow::Result<Self> {
+        for n in counts {
+            if n > MAX_DICE {
+                anyhow::bail!("{n} dice is beyond the maximum of {MAX_DICE}");
+            }
         }
+        Ok(Self {
+            ability: counts[0] as u32,
+            proficiency: counts[1] as u32,
+            difficulty: counts[2] as u32,
+            challenge: counts[3] as u32,
+            boost: counts[4] as u32,
+            setback: counts[5] as u32,
+            force: counts[6] as u32,
+        })
     }
 }
 
@@ -326,5 +360,35 @@ mod tests {
             }),
             "🟩🟩🟨 vs 🟪🟪"
         );
+    }
+}
+
+#[cfg(test)]
+mod bornes_tests {
+    use super::*;
+
+    #[test]
+    fn pool_borne_les_des() {
+        // Sans plafond, `format_pool` faisait « 🟩 ».repeat(4_000_000_000) :
+        // échec d'allocation → abort() du processus, donc TOUTES les sessions
+        // MCP tombaient avec. C'est atteignable par un simple argument d'outil.
+        let enorme = json!({ "ability": 4_000_000_000u64 });
+        assert!(FfgPool::from_args(&enorme).is_err());
+
+        let limite = json!({ "ability": MAX_DICE });
+        assert!(FfgPool::from_args(&limite).is_ok());
+        let trop = json!({ "ability": MAX_DICE + 1 });
+        assert!(FfgPool::from_args(&trop).is_err());
+
+        // Le plafond vaut pour chaque type de dé, pas seulement le premier.
+        assert!(FfgPool::from_args(&json!({ "setback": MAX_DICE + 1 })).is_err());
+        assert!(FfgPool::checked([0, 0, 0, 0, MAX_DICE + 1, 0, 0]).is_err());
+
+        // Et la sortie formatée d'un pool au maximum reste bornée.
+        let pool = FfgPool::from_args(&json!({
+            "ability": MAX_DICE, "proficiency": MAX_DICE, "difficulty": MAX_DICE
+        }))
+        .unwrap();
+        assert!(format_pool(&pool).chars().count() < 1000);
     }
 }

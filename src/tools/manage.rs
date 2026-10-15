@@ -2,17 +2,215 @@
 //! credentials/instances, attente de messages — port des comportements TS.
 
 use anyhow::{Result, anyhow, bail};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use super::markdown::html_to_markdown;
-use super::{str_arg, text_response};
+use super::{ToolDef, str_arg, text_response};
 use crate::mcp::McpState;
+
+/// Plafond du corps téléchargé par `upload_file` depuis une URL. Au-delà on
+/// abandonne : c'est un asset de jeu, pas une sauvegarde de monde.
+const MAX_FETCH_BYTES: usize = 64 * 1024 * 1024;
+
+/// Link-local : 169.254.0.0/16 et fe80::/10. Refusé DANS TOUS LES CAS.
+///
+/// C'est là que vivent les métadonnées des hébergeurs cloud
+/// (169.254.169.254 : jetons IAM, variables d'environnement de l'instance).
+/// Aucun asset de jeu légitime n'habite là, ni en datacentre ni à la maison —
+/// c'est la seule plage qu'on peut refuser sans jamais gêner personne.
+fn is_link_local(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => v4.is_link_local(),
+        std::net::IpAddr::V6(v6) => {
+            (v6.segments()[0] & 0xffc0) == 0xfe80
+                || v6
+                    .to_ipv4_mapped()
+                    .is_some_and(|v4| std::net::Ipv4Addr::is_link_local(&v4))
+        }
+    }
+}
+
+/// Une adresse du réseau privé ou de la machine elle-même.
+///
+/// ⚠️ « privée » ne veut PAS dire « interdite » : voir `internal_fetch_allowed`.
+/// Sur une passerelle auto-hébergée, ce réseau est celui de l'utilisateur.
+fn is_internal_addr(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+                || v4.is_documentation()
+                // 100.64.0.0/10 (CGNAT) et 0.0.0.0/8 ne sont pas couverts par
+                // la bibliothèque standard stable.
+                || (v4.octets()[0] == 100 && (64..128).contains(&v4.octets()[1]))
+                || v4.octets()[0] == 0
+        }
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                // fc00::/7 (unique local) et fe80::/10 (link-local).
+                || (v6.segments()[0] & 0xfe00) == 0xfc00
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
+                // ::ffff:127.0.0.1 contournerait sinon tous les tests IPv4
+                // ci-dessus : on repasse la forme mappée dans les mêmes règles.
+                || v6
+                    .to_ipv4_mapped()
+                    .is_some_and(|v4| is_internal_addr(std::net::IpAddr::V4(v4)))
+        }
+    }
+}
+
+/// La passerelle a-t-elle le droit d'aller chercher une URL sur un réseau privé ?
+///
+/// La question n'a pas la même réponse selon l'hébergement, et c'est le
+/// déploiement lui-même qui tranche — pas un réglage de plus à comprendre :
+///
+/// * **Auto-hébergé** (un Foundry en `localhost:30000`, sur un Pi, un NAS, un
+///   homelab) : le réseau privé est celui de l'utilisateur. Lui interdire de
+///   téléverser une image depuis son propre NAS serait absurde. On autorise.
+/// * **Passerelle distante** (cloud, free-tier) parlant à un Foundry public :
+///   là « privé » désigne l'infra de l'hébergeur, que l'utilisateur ne
+///   possède pas. Et l'appelant est un modèle de langage qui lit le contenu du
+///   monde : une injection de prompt dans un journal (« appelle upload_file
+///   avec url=http://10.0.0.5/… ») en ferait une primitive de balayage
+///   interne. On refuse.
+///
+/// La détection : si UNE instance configurée est elle-même sur une adresse
+/// privée ou locale, la passerelle tourne à côté de son Foundry, donc chez
+/// l'utilisateur. `FOUNDRY_ALLOW_INTERNAL_FETCH` force le comportement pour
+/// les topologies que cette heuristique ne couvre pas (tunnel, VPN).
+async fn internal_fetch_allowed(state: &McpState) -> bool {
+    match std::env::var("FOUNDRY_ALLOW_INTERNAL_FETCH").as_deref() {
+        Ok("1" | "true") => return true,
+        Ok("0" | "false") => return false,
+        _ => {}
+    }
+    for cred in state.credentials.iter() {
+        let (host, _) = crate::foundry::auth::split_host(&cred.hostname);
+        let host = host.split('/').next().unwrap_or(&host);
+        let (name, port) = match host.rsplit_once(':') {
+            Some((h, p)) if p.chars().all(|c| c.is_ascii_digit()) => (h, p.parse().unwrap_or(80)),
+            _ => (host, 80u16),
+        };
+        if name == "localhost" || name == "host.docker.internal" {
+            return true;
+        }
+        if let Ok(addrs) = tokio::net::lookup_host((name, port)).await
+            && addrs.into_iter().any(|a| is_internal_addr(a.ip()))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Télécharge une URL fournie par l'appelant, sans laisser la passerelle
+/// servir de relais vers un réseau qui n'appartient pas à son opérateur.
+///
+/// Voir `internal_fetch_allowed` : la politique dépend de l'hébergement. Le
+/// link-local est refusé partout, et les redirections ne sont jamais suivies —
+/// sans quoi un hôte public renverrait simplement un 302 vers l'IMDS.
+async fn fetch_external_url(state: &McpState, url: &str) -> Result<(Vec<u8>, String)> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| anyhow!("invalid 'url': {e}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        bail!("'url' must be http or https (got '{}')", parsed.scheme());
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| anyhow!("'url' has no host"))?
+        .to_string();
+    let port = parsed.port_or_known_default().unwrap_or(80);
+
+    // Résolution explicite : un nom peut pointer vers une adresse interne.
+    let addrs: Vec<_> = tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .map_err(|e| anyhow!("cannot resolve '{host}': {e}"))?
+        .collect();
+    if addrs.is_empty() {
+        bail!("cannot resolve '{host}'");
+    }
+    // Le link-local n'est légitime nulle part, quel que soit l'hébergement.
+    if let Some(bad) = addrs.iter().find(|a| is_link_local(a.ip())) {
+        bail!(
+            "refusing to fetch '{host}': it resolves to the link-local address {} \
+             (this is where cloud instance metadata lives)",
+            bad.ip()
+        );
+    }
+    // Le reste du réseau privé dépend de l'hébergement.
+    if !internal_fetch_allowed(state).await
+        && let Some(bad) = addrs.iter().find(|a| is_internal_addr(a.ip()))
+    {
+        bail!(
+            "refusing to fetch '{host}': it resolves to the private address {}, and this gateway \
+             is not hosted alongside a private network. If it should be able to reach your LAN, \
+             set FOUNDRY_ALLOW_INTERNAL_FETCH=1",
+            bad.ip()
+        );
+    }
+
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
+    let resp = client.get(parsed).send().await?;
+    if resp.status().is_redirection() {
+        bail!(
+            "refusing to follow a redirect from '{host}' (status {}) — point 'url' at the final location",
+            resp.status()
+        );
+    }
+    let resp = resp.error_for_status()?;
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let bytes = resp.bytes().await?;
+    if bytes.len() > MAX_FETCH_BYTES {
+        bail!(
+            "downloaded file is too large ({} MB, maximum {} MB)",
+            bytes.len() / 1_048_576,
+            MAX_FETCH_BYTES / 1_048_576
+        );
+    }
+    Ok((bytes.to_vec(), content_type))
+}
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
+/// Construites une fois : `handles` est appelé pour chaque module à chaque
+/// dispatch, et rebâtir les schémas json! à chaque fois coûtait une
+/// allocation par outil pour une simple question d'appartenance.
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+fn build_definitions() -> Vec<ToolDef> {
     vec![
+        ("companion_trust_key",
+         "Install this gateway's public key into the world, so the companion module accepts its commands. Run this once after installing the companion — it saves copying a long key by hand. Refuses to overwrite a different key already in place unless force is true (another gateway may be driving this world). Gamemaster browsers must reload afterwards.",
+         json!({"type":"object","properties":{
+            "force":{"type":"boolean","description":"replace a different key that is already trusted"}}})),
+        ("manage_modules",
+         "List the world's modules (installed vs enabled, with versions), or enable/disable some. Changes need every client to reload (F5) to take effect — the tool reminds you.",
+         json!({"type":"object","properties":{
+            "enable":{"type":"array","items":{"type":"string"},"description":"module ids to enable"},
+            "disable":{"type":"array","items":{"type":"string"},"description":"module ids to disable"}}})),
+        ("manage_users",
+         "List the world's user accounts, or create/update/delete them: name, role (player/trusted/assistant/gamemaster), assigned character, colour. PASSWORDS ARE NOT HANDLED HERE — the GM sets them in Foundry (Configure Players); accounts created here start password-less, which Foundry allows.",
+         json!({"type":"object","properties":{
+            "create":{"type":"array","description":"[{name, role?, character?, color?}] — role: player|trusted|assistant|gamemaster (default player)",
+                      "items":{"type":"object"}},
+            "update":{"type":"array","description":"[{_id or name, role?, character?, color?}]",
+                      "items":{"type":"object"}},
+            "delete":{"type":"array","items":{"type":"string"},"description":"user _ids or names to delete (refuses the bot's own account)"}}})),
         ("set_setting",
          "Set a world-scoped setting (upsert). Keys are namespaced like \"module.setting\".",
          json!({"type":"object","properties":{
@@ -94,6 +292,317 @@ fn level_name(v: u64) -> String {
 pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
     let foundry = &state.foundry;
     match name {
+        "companion_trust_key" => {
+            const KEY: &str = "foundry-mcp-gateway-companion.rootPublicKey";
+            let ours = state.signer.public_hex();
+            let w = json!({ "key": KEY }).as_object().cloned().unwrap();
+            let existing = foundry
+                .get_documents("settings", Some(&w), None, 0, Some(1))
+                .await?;
+            // La valeur stockée est du JSON (un Setting sérialise sa valeur).
+            let current = existing.first().and_then(|d| {
+                let raw = d.get("value")?.as_str()?;
+                serde_json::from_str::<String>(raw).ok()
+            });
+
+            // TOFU : on n'écrase jamais en silence une clé DIFFÉRENTE. Sans ce
+            // garde-fou, une seconde passerelle branchée sur le même monde
+            // détournerait l'ancrage de confiance sans que personne ne le voie.
+            if let Some(ref old) = current
+                && !old.is_empty()
+                && old != ours
+                && args.get("force").and_then(Value::as_bool) != Some(true)
+            {
+                bail!(
+                    "this world already trusts a different gateway key ({}…). Another gateway may \
+                     already be driving it. Re-run with force: true only if you mean to replace it.",
+                    &old[..old.len().min(16)]
+                );
+            }
+            if current.as_deref() == Some(ours) {
+                return Ok(text_response(
+                    &json!({ "action": "unchanged", "publicKey": ours }),
+                ));
+            }
+
+            let serialized = Value::String(ours.to_string()).to_string();
+            let (action, result) = match existing.first() {
+                Some(doc) => {
+                    let r = foundry.modify_document("Setting", "update", json!({
+                        "action": "update", "diff": false, "recursive": true, "render": true,
+                        "updates": [{"_id": doc["_id"], "value": serialized}],
+                    })).await?;
+                    ("updated", r)
+                }
+                None => {
+                    let r = foundry.modify_document("Setting", "create", json!({
+                        "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+                        "data": [{"key": KEY, "value": serialized}],
+                    })).await?;
+                    ("created", r)
+                }
+            };
+            Ok(text_response(&json!({
+                "action": action,
+                "publicKey": ours,
+                "note": "Gamemaster browsers must reload (F5) before the new key takes effect — \
+                         the companion freezes it at startup on purpose.",
+                "result": result,
+            })))
+        }
+        "manage_modules" => {
+            // état : liste installée (dump monde) × configuration activée (setting)
+            let world = state.foundry.request_world().await?;
+            let empty = vec![];
+            let installed = world
+                .get("modules")
+                .and_then(Value::as_array)
+                .unwrap_or(&empty);
+            let w = json!({"key": "core.moduleConfiguration"})
+                .as_object()
+                .cloned()
+                .unwrap();
+            let setting = state
+                .foundry
+                .get_documents("settings", Some(&w), None, 0, Some(1))
+                .await?
+                .into_iter()
+                .next()
+                .ok_or_else(|| anyhow!("core.moduleConfiguration introuvable"))?;
+            let mut config: Map<String, Value> = setting
+                .get("value")
+                .and_then(Value::as_str)
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_default();
+
+            let ids = |key: &str| -> Vec<String> {
+                args.get(key)
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            };
+            let (to_enable, to_disable) = (ids("enable"), ids("disable"));
+            if to_enable.is_empty() && to_disable.is_empty() {
+                // lecture seule : le tableau de bord
+                let list: Vec<Value> = installed
+                    .iter()
+                    .map(|m| {
+                        let id = m.get("id").and_then(Value::as_str).unwrap_or("?");
+                        json!({
+                            "id": id,
+                            "title": m.get("title"),
+                            "version": m.get("version"),
+                            "enabled": config.get(id).and_then(Value::as_bool).unwrap_or(false),
+                        })
+                    })
+                    .collect();
+                let enabled = list.iter().filter(|m| m["enabled"] == json!(true)).count();
+                return Ok(text_response(&json!({
+                    "installed": list.len(), "enabled": enabled, "modules": list,
+                })));
+            }
+            // écriture : vérifier que les ids existent avant de toucher au réglage
+            let known: Vec<&str> = installed
+                .iter()
+                .filter_map(|m| m.get("id").and_then(Value::as_str))
+                .collect();
+            for id in to_enable.iter().chain(to_disable.iter()) {
+                if !known.contains(&id.as_str()) {
+                    bail!("module inconnu : {id} (voir manage_modules sans argument)");
+                }
+            }
+            for id in &to_enable {
+                config.insert(id.clone(), json!(true));
+            }
+            for id in &to_disable {
+                config.insert(id.clone(), json!(false));
+            }
+            state
+                .foundry
+                .modify_document(
+                    "Setting",
+                    "update",
+                    json!({
+                        "action": "update", "diff": false, "recursive": true, "render": true,
+                        "updates": [{
+                            "_id": setting["_id"],
+                            "value": Value::Object(config).to_string(),
+                        }],
+                    }),
+                )
+                .await?;
+            Ok(text_response(&json!({
+                "enabled": to_enable, "disabled": to_disable,
+                "note": "chaque client doit recharger (F5) pour que le changement prenne effet",
+            })))
+        }
+
+        "manage_users" => {
+            let bot = state.foundry.user_id().await;
+            let users = state
+                .foundry
+                .get_documents("users", None, None, 0, None)
+                .await?;
+            let find = |key: &str| -> Option<Value> {
+                users
+                    .iter()
+                    .find(|u| u["_id"] == json!(key) || u["name"] == json!(key))
+                    .cloned()
+            };
+            let role_of = |v: Option<&Value>| -> Result<Option<i64>> {
+                let Some(v) = v else { return Ok(None) };
+                if let Some(n) = v.as_i64() {
+                    return Ok(Some(n));
+                }
+                let s = v.as_str().unwrap_or_default().to_lowercase();
+                Ok(Some(match s.as_str() {
+                    "none" => 0,
+                    "player" => 1,
+                    "trusted" => 2,
+                    "assistant" | "assistant gm" | "assistantgm" => 3,
+                    "gamemaster" | "gm" => 4,
+                    other => bail!(
+                        "rôle inconnu : '{other}' (player | trusted | assistant | gamemaster)"
+                    ),
+                }))
+            };
+            let label = |r: i64| match r {
+                0 => "none",
+                1 => "player",
+                2 => "trusted",
+                3 => "assistant",
+                4 => "gamemaster",
+                _ => "?",
+            };
+            let (create, update, delete) = (
+                args.get("create").and_then(Value::as_array),
+                args.get("update").and_then(Value::as_array),
+                args.get("delete").and_then(Value::as_array),
+            );
+            // lecture seule : le tableau de bord des comptes
+            if create.is_none() && update.is_none() && delete.is_none() {
+                let list: Vec<Value> = users
+                    .iter()
+                    .map(|u| {
+                        let r = u.get("role").and_then(Value::as_i64).unwrap_or(0);
+                        json!({
+                            "_id": u["_id"], "name": u["name"],
+                            "role": r, "roleName": label(r),
+                            "character": u.get("character"),
+                        })
+                    })
+                    .collect();
+                // Foundry blanchit password/passwordSalt pour TOUS les clients
+                // (vérifié : chaîne vide même pour le compte du bot) — on ne
+                // peut donc PAS dire ici si un compte a un mot de passe.
+                return Ok(text_response(&json!({
+                    "count": list.len(), "users": list,
+                    "note": "passwords are never visible client-side (Foundry blanks them) — set them in Configure Players",
+                })));
+            }
+            let mut report = json!({});
+            if let Some(items) = create {
+                let mut data = Vec::new();
+                for item in items {
+                    let name = str_arg(item, "name")
+                        .ok_or_else(|| anyhow!("chaque compte à créer a besoin d'un 'name'"))?;
+                    if find(&name).is_some() {
+                        bail!("un utilisateur nommé '{name}' existe déjà");
+                    }
+                    let mut doc = json!({
+                        "name": name,
+                        "role": role_of(item.get("role"))?.unwrap_or(1),
+                    });
+                    for k in ["character", "color"] {
+                        if let Some(v) = item.get(k) {
+                            doc[k] = v.clone();
+                        }
+                    }
+                    data.push(doc);
+                }
+                let r = state
+                    .foundry
+                    .modify_document(
+                        "User",
+                        "create",
+                        json!({ "action": "create", "broadcast": false, "renderSheet": false,
+                                "keepId": false, "data": data }),
+                    )
+                    .await?;
+                report["created"] = r
+                    .get("result")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .map(|u| json!({"_id": u["_id"], "name": u["name"], "role": u["role"]}))
+                            .collect::<Vec<_>>()
+                            .into()
+                    })
+                    .unwrap_or(Value::Null);
+                report["passwordNote"] = json!(
+                    "comptes sans mot de passe — à définir dans Foundry (Configurer les joueurs)"
+                );
+            }
+            if let Some(items) = update {
+                let mut updates = Vec::new();
+                for item in items {
+                    let key = str_arg(item, "_id")
+                        .or_else(|| str_arg(item, "name"))
+                        .ok_or_else(|| anyhow!("chaque mise à jour a besoin de '_id' ou 'name'"))?;
+                    let existing =
+                        find(&key).ok_or_else(|| anyhow!("utilisateur introuvable : {key}"))?;
+                    let mut u = json!({ "_id": existing["_id"] });
+                    if let Some(r) = role_of(item.get("role"))? {
+                        u["role"] = json!(r);
+                    }
+                    for k in ["character", "color", "name"] {
+                        if let Some(v) = item.get(k) {
+                            u[k] = v.clone();
+                        }
+                    }
+                    updates.push(u);
+                }
+                state
+                    .foundry
+                    .modify_document(
+                        "User",
+                        "update",
+                        json!({ "action": "update", "diff": false, "recursive": true,
+                                "render": true, "updates": updates }),
+                    )
+                    .await?;
+                report["updated"] = json!(updates.len());
+            }
+            if let Some(items) = delete {
+                let mut ids = Vec::new();
+                for item in items {
+                    let key = item.as_str().unwrap_or_default();
+                    let existing =
+                        find(key).ok_or_else(|| anyhow!("utilisateur introuvable : {key}"))?;
+                    let id = existing["_id"].as_str().unwrap_or_default().to_string();
+                    if Some(&id) == bot.as_ref() {
+                        bail!("refus de supprimer le compte du bot MCP lui-même ({key})");
+                    }
+                    ids.push(json!(id));
+                }
+                state
+                    .foundry
+                    .modify_document(
+                        "User",
+                        "delete",
+                        json!({ "action": "delete", "broadcast": false, "deleteAll": false,
+                                "ids": ids }),
+                    )
+                    .await?;
+                report["deleted"] = json!(ids);
+            }
+            Ok(text_response(&report))
+        }
+
         "set_setting" => {
             let key = str_arg(args, "key").ok_or_else(|| anyhow!("'key' is required"))?;
             let value = args
@@ -340,16 +849,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let (bytes, content_type) = match (url, image_data) {
                 (Some(_), Some(_)) => bail!("Cannot provide both 'url' and 'image_data'"),
                 (None, None) => bail!("Must provide either 'url' or 'image_data'"),
-                (Some(u), None) => {
-                    let resp = foundry.http.get(&u).send().await?;
-                    let ct = resp
-                        .headers()
-                        .get(reqwest::header::CONTENT_TYPE)
-                        .and_then(|v| v.to_str().ok())
-                        .unwrap_or("application/octet-stream")
-                        .to_string();
-                    (resp.bytes().await?.to_vec(), ct)
-                }
+                (Some(u), None) => fetch_external_url(state, &u).await?,
                 (None, Some(b64)) => {
                     let bytes = base64_decode(&b64)?;
                     (bytes, content_type_for(&filename))
@@ -510,6 +1010,49 @@ fn content_type_for(filename: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn link_local_refuse_partout() {
+        let ip = |s: &str| s.parse::<std::net::IpAddr>().unwrap();
+        // Métadonnées d'instance cloud : jetons IAM, env de la machine.
+        // Jamais un asset de jeu, ni en datacentre ni à la maison.
+        assert!(is_link_local(ip("169.254.169.254")));
+        assert!(is_link_local(ip("169.254.0.1")));
+        assert!(is_link_local(ip("fe80::1")));
+        assert!(is_link_local(ip("::ffff:169.254.169.254")));
+
+        // Le reste du réseau privé n'est PAS link-local : sur une passerelle
+        // auto-hébergée (Pi, NAS, homelab) c'est le réseau de l'utilisateur,
+        // et lui interdire son propre NAS n'aurait aucun sens.
+        assert!(!is_link_local(ip("192.168.1.50")));
+        assert!(!is_link_local(ip("127.0.0.1")));
+        assert!(!is_link_local(ip("10.0.0.5")));
+        assert!(!is_link_local(ip("1.1.1.1")));
+    }
+
+    #[test]
+    fn adresses_internes_classees() {
+        let ip = |s: &str| s.parse::<std::net::IpAddr>().unwrap();
+        assert!(is_internal_addr(ip("169.254.169.254")));
+        assert!(is_internal_addr(ip("127.0.0.1")));
+        assert!(is_internal_addr(ip("10.0.0.5")));
+        assert!(is_internal_addr(ip("192.168.1.1")));
+        assert!(is_internal_addr(ip("172.16.0.1")));
+        assert!(is_internal_addr(ip("100.64.0.1"))); // CGNAT
+        assert!(is_internal_addr(ip("0.0.0.0")));
+        assert!(is_internal_addr(ip("::1")));
+        assert!(is_internal_addr(ip("fd00::1"))); // unique local
+        assert!(is_internal_addr(ip("fe80::1"))); // link-local
+        // La forme mappée doit tomber sous les mêmes règles que sa forme v4,
+        // sinon ::ffff:127.0.0.1 passait tout droit.
+        assert!(is_internal_addr(ip("::ffff:127.0.0.1")));
+        assert!(is_internal_addr(ip("::ffff:169.254.169.254")));
+
+        // Et le trafic légitime doit continuer de passer.
+        assert!(!is_internal_addr(ip("1.1.1.1")));
+        assert!(!is_internal_addr(ip("93.184.216.34")));
+        assert!(!is_internal_addr(ip("2606:4700:4700::1111")));
+    }
 
     #[test]
     fn base64_roundtrip() {

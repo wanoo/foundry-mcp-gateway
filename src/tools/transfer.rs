@@ -7,14 +7,21 @@
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Map, Value, json};
 
-use super::{plural_to_collection, str_arg, text_response};
+use super::{ToolDef, plural_to_collection, str_arg, text_response};
 use crate::foundry::documents::collection_to_type;
 use crate::mcp::McpState;
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
 #[rustfmt::skip]
-pub fn definitions() -> Vec<(&'static str, &'static str, Value)> {
+pub fn definitions() -> &'static [ToolDef] {
+    &DEFS
+}
+
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+#[rustfmt::skip]
+fn build_definitions() -> Vec<ToolDef> {
     vec![
         ("copy_documents",
          "Copy documents from one Foundry instance to another (both must be in FOUNDRY_CREDENTIALS_JSON — see show_credentials). Pick what to copy with `where`/`ids`; _ids are preserved by default so @UUID links between copied documents keep working. Use dry_run first to see what would move. NOTE: image/audio paths are copied as-is — they resolve only if the target server hosts the same files (true for two worlds on the same Foundry install).",

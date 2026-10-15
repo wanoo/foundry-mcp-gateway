@@ -15,6 +15,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Map, Value, json};
 
+use super::ToolDef;
 use super::{str_arg, text_response};
 use crate::foundry::auth::split_host;
 use crate::mcp::McpState;
@@ -22,7 +23,37 @@ use crate::mcp::McpState;
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
 // ne s'accordent pas sur ces tuples à longues descriptions.
 #[rustfmt::skip]
-pub fn definitions(state: &McpState) -> Vec<(&'static str, &'static str, Value)> {
+/// Les 8 outils du plan /setup : exposés seulement si FOUNDRY_ADMIN_PASSWORD
+/// est configuré. `handles` les reconnaît TOUJOURS, y compris sans mot de
+/// passe — sinon ils tomberaient dans run_tool et l'agent lirait « Unknown
+/// tool » au lieu du vrai message d'explication.
+const SETUP_ONLY: [&str; 8] = [
+    "admin_shutdown_world",
+    "admin_launch_world",
+    "admin_list_backups",
+    "admin_backup_world",
+    "admin_create_world",
+    "admin_install_package",
+    "admin_check_package",
+    "admin_update_package",
+];
+
+static DEFS: std::sync::LazyLock<Vec<ToolDef>> = std::sync::LazyLock::new(build_definitions);
+
+/// Le catalogue complet, mot de passe admin ou non — les tests de cohérence du
+/// registre en ont besoin sans avoir à fabriquer un McpState.
+#[cfg(test)]
+pub static DEFS_FOR_TEST: &std::sync::LazyLock<Vec<ToolDef>> = &DEFS;
+
+pub fn definitions(state: &McpState) -> Vec<&'static ToolDef> {
+    let unlocked = state.admin_password.is_some();
+    DEFS.iter()
+        .filter(|(n, _, _)| unlocked || !SETUP_ONLY.contains(n))
+        .collect()
+}
+
+#[rustfmt::skip]
+fn build_definitions() -> Vec<ToolDef> {
     let mut tools = vec![
         ("admin_status",
          "Instance status straight from /api/status: is a world active, which one, version, uptime — works even when the world is down (unlike every world tool). Also says whether the admin password is configured for the admin_* tools.",
@@ -34,21 +65,8 @@ pub fn definitions(state: &McpState) -> Vec<(&'static str, &'static str, Value)>
             "description":{"type":"string"},
             "background":{"type":"string","description":"image path/URL shown on the join page"},
             "next_session":{"type":"string","description":"ISO date, or empty string to clear"}}})),
-        ("manage_modules",
-         "List the world's modules (installed vs enabled, with versions), or enable/disable some. Changes need every client to reload (F5) to take effect — the tool reminds you.",
-         json!({"type":"object","properties":{
-            "enable":{"type":"array","items":{"type":"string"},"description":"module ids to enable"},
-            "disable":{"type":"array","items":{"type":"string"},"description":"module ids to disable"}}})),
-        ("manage_users",
-         "List the world's user accounts, or create/update/delete them: name, role (player/trusted/assistant/gamemaster), assigned character, colour. PASSWORDS ARE NOT HANDLED HERE — the GM sets them in Foundry (Configure Players); accounts created here start password-less, which Foundry allows.",
-         json!({"type":"object","properties":{
-            "create":{"type":"array","description":"[{name, role?, character?, color?}] — role: player|trusted|assistant|gamemaster (default player)",
-                      "items":{"type":"object"}},
-            "update":{"type":"array","description":"[{_id or name, role?, character?, color?}]",
-                      "items":{"type":"object"}},
-            "delete":{"type":"array","items":{"type":"string"},"description":"user _ids or names to delete (refuses the bot's own account)"}}})),
     ];
-    if state.admin_password.is_some() {
+    {
         tools.extend([
             ("admin_shutdown_world",
              "Shut the running world down (back to setup mode). DISCONNECTS every player AND this MCP server's bot (world tools go down until relaunch; the bot reconnects automatically). Requires confirm:true.",
@@ -102,8 +120,11 @@ pub fn definitions(state: &McpState) -> Vec<(&'static str, &'static str, Value)>
     tools
 }
 
+/// Liste ses propres noms plutôt qu'un préfixe : `starts_with("admin_")`
+/// revendiquait des outils que `run` ne traite pas, et ça ne fonctionnait que
+/// grâce à la position du module dans la chaîne de `else if` du dispatch.
 pub fn handles(name: &str) -> bool {
-    name.starts_with("admin_") || matches!(name, "manage_modules" | "manage_users")
+    DEFS.iter().any(|(n, _, _)| *n == name)
 }
 
 /* ------------------------------------------------------------- plumbing */
@@ -288,259 +309,6 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 "nextSession": payload["nextSession"],
                 "note": "visible sur la page de connexion (les joueurs en jeu ne voient rien changer)",
             })))
-        }
-
-        "manage_modules" => {
-            // état : liste installée (dump monde) × configuration activée (setting)
-            let world = state.foundry.request_world().await?;
-            let empty = vec![];
-            let installed = world
-                .get("modules")
-                .and_then(Value::as_array)
-                .unwrap_or(&empty);
-            let w = json!({"key": "core.moduleConfiguration"})
-                .as_object()
-                .cloned()
-                .unwrap();
-            let setting = state
-                .foundry
-                .get_documents("settings", Some(&w), None, 0, Some(1))
-                .await?
-                .into_iter()
-                .next()
-                .ok_or_else(|| anyhow!("core.moduleConfiguration introuvable"))?;
-            let mut config: Map<String, Value> = setting
-                .get("value")
-                .and_then(Value::as_str)
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or_default();
-
-            let ids = |key: &str| -> Vec<String> {
-                args.get(key)
-                    .and_then(Value::as_array)
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect()
-                    })
-                    .unwrap_or_default()
-            };
-            let (to_enable, to_disable) = (ids("enable"), ids("disable"));
-            if to_enable.is_empty() && to_disable.is_empty() {
-                // lecture seule : le tableau de bord
-                let list: Vec<Value> = installed
-                    .iter()
-                    .map(|m| {
-                        let id = m.get("id").and_then(Value::as_str).unwrap_or("?");
-                        json!({
-                            "id": id,
-                            "title": m.get("title"),
-                            "version": m.get("version"),
-                            "enabled": config.get(id).and_then(Value::as_bool).unwrap_or(false),
-                        })
-                    })
-                    .collect();
-                let enabled = list.iter().filter(|m| m["enabled"] == json!(true)).count();
-                return Ok(text_response(&json!({
-                    "installed": list.len(), "enabled": enabled, "modules": list,
-                })));
-            }
-            // écriture : vérifier que les ids existent avant de toucher au réglage
-            let known: Vec<&str> = installed
-                .iter()
-                .filter_map(|m| m.get("id").and_then(Value::as_str))
-                .collect();
-            for id in to_enable.iter().chain(to_disable.iter()) {
-                if !known.contains(&id.as_str()) {
-                    bail!("module inconnu : {id} (voir manage_modules sans argument)");
-                }
-            }
-            for id in &to_enable {
-                config.insert(id.clone(), json!(true));
-            }
-            for id in &to_disable {
-                config.insert(id.clone(), json!(false));
-            }
-            state
-                .foundry
-                .modify_document(
-                    "Setting",
-                    "update",
-                    json!({
-                        "action": "update", "diff": false, "recursive": true, "render": true,
-                        "updates": [{
-                            "_id": setting["_id"],
-                            "value": Value::Object(config).to_string(),
-                        }],
-                    }),
-                )
-                .await?;
-            Ok(text_response(&json!({
-                "enabled": to_enable, "disabled": to_disable,
-                "note": "chaque client doit recharger (F5) pour que le changement prenne effet",
-            })))
-        }
-
-        "manage_users" => {
-            let bot = state.foundry.user_id().await;
-            let users = state
-                .foundry
-                .get_documents("users", None, None, 0, None)
-                .await?;
-            let find = |key: &str| -> Option<Value> {
-                users
-                    .iter()
-                    .find(|u| u["_id"] == json!(key) || u["name"] == json!(key))
-                    .cloned()
-            };
-            let role_of = |v: Option<&Value>| -> Result<Option<i64>> {
-                let Some(v) = v else { return Ok(None) };
-                if let Some(n) = v.as_i64() {
-                    return Ok(Some(n));
-                }
-                let s = v.as_str().unwrap_or_default().to_lowercase();
-                Ok(Some(match s.as_str() {
-                    "none" => 0,
-                    "player" => 1,
-                    "trusted" => 2,
-                    "assistant" | "assistant gm" | "assistantgm" => 3,
-                    "gamemaster" | "gm" => 4,
-                    other => bail!(
-                        "rôle inconnu : '{other}' (player | trusted | assistant | gamemaster)"
-                    ),
-                }))
-            };
-            let label = |r: i64| match r {
-                0 => "none",
-                1 => "player",
-                2 => "trusted",
-                3 => "assistant",
-                4 => "gamemaster",
-                _ => "?",
-            };
-            let (create, update, delete) = (
-                args.get("create").and_then(Value::as_array),
-                args.get("update").and_then(Value::as_array),
-                args.get("delete").and_then(Value::as_array),
-            );
-            // lecture seule : le tableau de bord des comptes
-            if create.is_none() && update.is_none() && delete.is_none() {
-                let list: Vec<Value> = users
-                    .iter()
-                    .map(|u| {
-                        let r = u.get("role").and_then(Value::as_i64).unwrap_or(0);
-                        json!({
-                            "_id": u["_id"], "name": u["name"],
-                            "role": r, "roleName": label(r),
-                            "character": u.get("character"),
-                        })
-                    })
-                    .collect();
-                // Foundry blanchit password/passwordSalt pour TOUS les clients
-                // (vérifié : chaîne vide même pour le compte du bot) — on ne
-                // peut donc PAS dire ici si un compte a un mot de passe.
-                return Ok(text_response(&json!({
-                    "count": list.len(), "users": list,
-                    "note": "passwords are never visible client-side (Foundry blanks them) — set them in Configure Players",
-                })));
-            }
-            let mut report = json!({});
-            if let Some(items) = create {
-                let mut data = Vec::new();
-                for item in items {
-                    let name = str_arg(item, "name")
-                        .ok_or_else(|| anyhow!("chaque compte à créer a besoin d'un 'name'"))?;
-                    if find(&name).is_some() {
-                        bail!("un utilisateur nommé '{name}' existe déjà");
-                    }
-                    let mut doc = json!({
-                        "name": name,
-                        "role": role_of(item.get("role"))?.unwrap_or(1),
-                    });
-                    for k in ["character", "color"] {
-                        if let Some(v) = item.get(k) {
-                            doc[k] = v.clone();
-                        }
-                    }
-                    data.push(doc);
-                }
-                let r = state
-                    .foundry
-                    .modify_document(
-                        "User",
-                        "create",
-                        json!({ "action": "create", "broadcast": false, "renderSheet": false,
-                                "keepId": false, "data": data }),
-                    )
-                    .await?;
-                report["created"] = r
-                    .get("result")
-                    .and_then(Value::as_array)
-                    .map(|a| {
-                        a.iter()
-                            .map(|u| json!({"_id": u["_id"], "name": u["name"], "role": u["role"]}))
-                            .collect::<Vec<_>>()
-                            .into()
-                    })
-                    .unwrap_or(Value::Null);
-                report["passwordNote"] = json!(
-                    "comptes sans mot de passe — à définir dans Foundry (Configurer les joueurs)"
-                );
-            }
-            if let Some(items) = update {
-                let mut updates = Vec::new();
-                for item in items {
-                    let key = str_arg(item, "_id")
-                        .or_else(|| str_arg(item, "name"))
-                        .ok_or_else(|| anyhow!("chaque mise à jour a besoin de '_id' ou 'name'"))?;
-                    let existing =
-                        find(&key).ok_or_else(|| anyhow!("utilisateur introuvable : {key}"))?;
-                    let mut u = json!({ "_id": existing["_id"] });
-                    if let Some(r) = role_of(item.get("role"))? {
-                        u["role"] = json!(r);
-                    }
-                    for k in ["character", "color", "name"] {
-                        if let Some(v) = item.get(k) {
-                            u[k] = v.clone();
-                        }
-                    }
-                    updates.push(u);
-                }
-                state
-                    .foundry
-                    .modify_document(
-                        "User",
-                        "update",
-                        json!({ "action": "update", "diff": false, "recursive": true,
-                                "render": true, "updates": updates }),
-                    )
-                    .await?;
-                report["updated"] = json!(updates.len());
-            }
-            if let Some(items) = delete {
-                let mut ids = Vec::new();
-                for item in items {
-                    let key = item.as_str().unwrap_or_default();
-                    let existing =
-                        find(key).ok_or_else(|| anyhow!("utilisateur introuvable : {key}"))?;
-                    let id = existing["_id"].as_str().unwrap_or_default().to_string();
-                    if Some(&id) == bot.as_ref() {
-                        bail!("refus de supprimer le compte du bot MCP lui-même ({key})");
-                    }
-                    ids.push(json!(id));
-                }
-                state
-                    .foundry
-                    .modify_document(
-                        "User",
-                        "delete",
-                        json!({ "action": "delete", "broadcast": false, "deleteAll": false,
-                                "ids": ids }),
-                    )
-                    .await?;
-                report["deleted"] = json!(ids);
-            }
-            Ok(text_response(&report))
         }
 
         "admin_create_world" => {

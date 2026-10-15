@@ -7,7 +7,7 @@
 **Give your AI assistant a seat at your gaming table.**
 
 An independent [MCP](https://modelcontextprotocol.io) server for [Foundry VTT](https://foundryvtt.com) —
-one small Rust binary that logs into your world *like a player* and hands your AI **134 tools**
+one small Rust binary that logs into your world *like a player* and hands your AI **135 tools**
 to prep, run, and stage your games.
 
 [![Rust](https://img.shields.io/badge/Rust-single%20binary-orange?logo=rust)](https://www.rust-lang.org)
@@ -39,13 +39,28 @@ against your world, from any machine — or free-tier cloud hosting.
 
 ## 🚀 Quick start
 
+> **Upgrading from 1.5?** `MCP_SECRET` is gone. Run `foundry-mcp --generate-mcp-key`,
+> set `MCP_ROOT_PRIVATE_KEY`, then `foundry-mcp --mint-token <name>` and point your
+> client at `/mcp-<token>`. Tokens expire, can be scoped read-only, and can be
+> revoked one at a time — none of which a shared secret could do.
+
+
 **Before you start**, you need:
 
-- a Foundry world **reachable from the internet over HTTPS** (a hosting service,
-  or your own server with a domain — a Foundry that only exists on `localhost`
-  can't be reached by a cloud-hosted gateway);
+- a Foundry world the gateway can reach. Two cases, and the easy one is easier
+  than it looks:
+  - **same machine or same LAN** — `localhost:30000` works as-is, plain HTTP,
+    any port. A Raspberry Pi, a NAS or a homelab box running both Foundry and
+    the gateway needs nothing else;
+  - **gateway hosted elsewhere** (cloud, free tier) — then the world does need
+    to be reachable from the internet over HTTPS, because that's the only way
+    a remote gateway can log in;
 - Gamemaster access to it;
 - about 10 minutes.
+
+**No Rust toolchain needed.** A prebuilt image is published for **amd64 and
+arm64**, so `docker run wanoo/foundry-mcp-gateway` works on a Raspberry Pi or a
+NAS exactly as it does on a server — see the Docker section below.
 
 **1 · Create a bot user in Foundry** — as GM: *Configure Players → Create Additional
 User*, e.g. `MCP-Bot`, role **Gamemaster**, with a password. (A lower role works
@@ -75,13 +90,13 @@ Once the gateway is running, `manage_users` lists every account and id for you.
 
 **2 · Configure & run the server.** Three ways — **pick one**. No Rust on your
 machine? Use ☁️ Clever Cloud or 🐳 Docker below, they build everything for you.
-Two settings matter everywhere: `MCP_SECRET` (make it long and random — it
-protects your world) and `FOUNDRY_CREDENTIALS_JSON` (who the bot is, where).
+Two settings matter everywhere: `MCP_ROOT_PRIVATE_KEY` (it authenticates
+your MCP clients) and `FOUNDRY_CREDENTIALS_JSON` (who the bot is, where).
 
 With Rust installed, locally:
 
 ```sh
-export MCP_SECRET="a-long-random-string"          # your endpoint: /mcp-<secret>
+export MCP_ROOT_PRIVATE_KEY="…"                   # from --generate-mcp-key
 export FOUNDRY_CREDENTIALS_JSON='[{
   "_id": "my-world",
   "hostname": "my-host.com/my-world",             # route prefix supported;
@@ -100,7 +115,7 @@ cargo run --release                                # binary: target/release/foun
 
 ```sh
 clever create --type rust foundry-mcp-gateway
-clever env set MCP_SECRET "a-long-random-string"
+clever env set MCP_ROOT_PRIVATE_KEY "…"           # from --generate-mcp-key
 clever env set FOUNDRY_CREDENTIALS_JSON '[{"_id":"…","hostname":"…","userid":"…","password":"…"}]'
 clever env set CC_RUST_BIN foundry-mcp
 clever deploy
@@ -113,7 +128,7 @@ clever deploy
 ```sh
 docker build -t foundry-mcp-gateway .
 docker run -d --name foundry-mcp -p 8080:8080 \
-  -e MCP_SECRET="a-long-random-string" \
+  -e MCP_ROOT_PRIVATE_KEY="…" \
   -e FOUNDRY_CREDENTIALS_JSON='[{"_id":"…","hostname":"…","userid":"…","password":"…"}]' \
   foundry-mcp-gateway
 ```
@@ -126,7 +141,7 @@ services:
     build: .
     ports: ["8080:8080"]
     environment:
-      MCP_SECRET: "a-long-random-string"
+      MCP_ROOT_PRIVATE_KEY: "…"
       FOUNDRY_CREDENTIALS_JSON: '[{"_id":"…","hostname":"…","userid":"…","password":"…"}]'
       # FOUNDRY_ADMIN_PASSWORD: "…"
     restart: unless-stopped
@@ -141,7 +156,7 @@ proxy) before exposing it to the internet — the secret rides in the URL.
 ```sh
 # Docker (amd64 + arm64)
 docker run -d -p 8080:8080 \
-  -e MCP_SECRET="a-long-random-string" \
+  -e MCP_ROOT_PRIVATE_KEY="…" \
   -e FOUNDRY_CREDENTIALS_JSON='[{"_id":"…","hostname":"…","userid":"…","password":"…"}]' \
   wanoo/foundry-mcp-gateway
 
@@ -177,8 +192,8 @@ Several worlds? Put several objects in the credentials array and switch with
 
 ## 🧙 What your AI can do at your table
 
-**134 tools**, organized the way a GM works — 126 always, plus 8 administration
-tools that appear only when `FOUNDRY_ADMIN_PASSWORD` is set. 50 read-only tools
+**135 tools**, organized the way a GM works — 127 always, plus 8 administration
+tools that appear only when `FOUNDRY_ADMIN_PASSWORD` is set. 58 read-only tools
 are flagged as such so your MCP client can auto-approve them; only the two
 deletions are marked destructive. Check what your own deployment exposes with
 `foundry-mcp --dump-tools`.
@@ -193,6 +208,7 @@ deletions are marked destructive. Check what your own deployment exposes with
 | `list_compendium_packs` `get_pack_documents` `import_from_compendium` `create_compendium` `delete_compendium` | Full compendium workflow |
 | `browse_files` `create_directory` `upload_file` | File storage — upload maps & art by URL or base64 |
 | `get_world` `ping` `get_setting` `set_setting` `show_credentials` `choose_foundry_instance` | World metadata, health, settings, multi-world |
+| `companion_trust_key` | Install this gateway's signing key in the world, so the companion accepts its commands |
 
 ### 🎬 Run the session — the GM's remote control
 
@@ -332,7 +348,7 @@ documents the exact response shapes — envelope, reads, events, companion, admi
 The socket protocol only reaches *documents*. Everything marked *(companion)* above
 needs **[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**
 — a tiny Foundry module running in the GM's browser that executes what the server
-delegates: 35 handlers behind the `client_*` tools.
+delegates: 36 handlers behind the `client_*` tools.
 
 - Optional: without it, `client_*` tools time out with a clear message; everything else works.
 - Install: *Add-on Modules → Install → manifest URL*:
