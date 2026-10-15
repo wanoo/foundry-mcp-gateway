@@ -144,7 +144,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             let pool = FfgPool::from_args(args);
             let roll = {
                 let mut rng = rand::rng();
-                roll_ffg_pool(&pool, || rand::Rng::random::<f64>(&mut rng))
+                roll_ffg_pool(&pool, || rand::RngExt::random::<f64>(&mut rng))
             };
             let summary = format_result(&roll);
             let mut posted = false;
@@ -240,7 +240,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             };
             let roll = {
                 let mut rng = rand::rng();
-                roll_ffg_pool(&pool, || rand::Rng::random::<f64>(&mut rng))
+                roll_ffg_pool(&pool, || rand::RngExt::random::<f64>(&mut rng))
             };
             let summary = format_result(&roll);
             let derivation = format!(
