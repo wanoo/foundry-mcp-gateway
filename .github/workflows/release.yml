@@ -24,7 +24,7 @@ jobs:
       publish: ${{ steps.v.outputs.publish }}
       needs_tag: ${{ steps.v.outputs.needs_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - id: v
         run: |
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Create and push the tag
         run: |
           git config user.name "github-actions[bot]"
@@ -79,16 +79,16 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: prep
         run: echo "pair=${{ matrix.platform }}" | tr '/' '-' >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           username: wanoo
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
@@ -102,7 +102,7 @@ jobs:
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: digests-${{ steps.prep.outputs.pair }}
           path: /tmp/digests/*
@@ -116,15 +116,15 @@ jobs:
     if: always() && needs.docker.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { path: /tmp/digests, pattern: digests-*, merge-multiple: true }
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           username: wanoo
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: docker.io/${{ env.IMAGE }}
           tags: |
@@ -149,7 +149,7 @@ jobs:
             docker.io/${{ env.IMAGE }}:${{ needs.check.outputs.version }} | tee /tmp/inspect
           grep -q "linux/amd64" /tmp/inspect && grep -q "linux/arm64" /tmp/inspect
       - name: Push the README to the Docker Hub page
-        uses: peter-evans/dockerhub-description@v4
+        uses: peter-evans/dockerhub-description@v5
         with:
           username: wanoo
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -163,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Extract this version's CHANGELOG section
         run: |
           awk -v ver="${{ needs.check.outputs.version }}" '
@@ -173,7 +173,7 @@ jobs:
           ' CHANGELOG.md > NOTES.md
           test -s NOTES.md || echo "See CHANGELOG.md" > NOTES.md
           cat NOTES.md
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.check.outputs.version }}
           body_path: NOTES.md
@@ -196,7 +196,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions: { contents: write }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: foundry-mcp
@@ -213,7 +213,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: { id-token: write }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Already published?
         id: pub
         run: |
