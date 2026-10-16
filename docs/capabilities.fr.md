@@ -2,9 +2,9 @@
 
 [English](capabilities.md) · [Accueil](../README.fr.md) · [Installation](installation.fr.md) · [Guide avancé](advanced.fr.md)
 
-Le catalogue 1.7 comprend **166 outils** : 158 sans mot de passe administrateur,
+Le catalogue 1.8 comprend **184 outils** : 176 sans mot de passe administrateur,
 plus 8 outils d'administration activés par `FOUNDRY_ADMIN_PASSWORD`. Il compte
-69 outils de lecture seule et 46 outils compagnon (inclus dans le total).
+76 outils de lecture seule et 56 outils compagnon (inclus dans le total).
 Un jeton de lecture seule ou `FOUNDRY_READONLY=1` réduit le catalogue exposé ;
 `FOUNDRY_SYSTEMS` permet aussi de le restreindre.
 
@@ -105,6 +105,30 @@ Tous chargés par défaut ; restreignez avec `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`
 | **Mini Light Switch** | `ls_lights` / `ls_toggle` | Lister les lumières d'une scène, les allumer/éteindre par id ou tag Tagger, poser le décor animé — fonctionne même sans le module |
 | **Mini Player** | `mp_list_presets` `mp_scene_audio` · compagnon : `client_mp_play_preset` `client_mp_play_tags` | Lancer une ambiance enregistrée ou de la musique par tags ; régler l'audio joué à l'activation d'une scène |
 | **Mini Rolltable** | `draw_from_table` | Quantités (`1d4+1` gobelins) et tables liées respectées, jusqu'à 5 niveaux |
+
+## 🧰 Préparer scènes et butin — pièges, coffres et préfabriqués
+
+Les outils Monk's Active Tiles écrivent directement les documents (pas besoin du
+Companion pour construire les tuiles) ; Item Piles et Mass Edit passent par leurs
+propres API dans le navigateur MJ. Tout contenu qui exécuterait du code —
+`runcode`, valeurs évaluées, scripts de région, scripts de presets, macros de
+piles — est refusé tant que le MJ n'a pas autorisé les scripts distants dans le
+Companion ([pourquoi](advanced.fr.md#du-code-caché-dans-les-données)).
+
+| Addon | Outils | Pour quoi faire |
+|---|---|---|
+| **[Monk's Active Tiles](https://foundryvtt.com/packages/monks-active-tiles)** | `mat_create_tile` | Créer une tuile-action (piège, interrupteur, bouton) : position en pixels ou en cases, cachée par défaut, déclencheurs et actions validés, Region v14 en option |
+| | `mat_update_tile` | Modifier une tuile active : champs, remplacer/ajouter/retirer des actions, remettre à zéro l'historique, désactiver |
+| | `mat_get_tile` · `mat_action_types` | Lire la configuration complète d'une tuile (déclencheurs, conditions, actions, historique par token) · catalogue des déclencheurs et des actions sûres avec leurs champs, et de ce que le garde-fou refuse |
+| **[Item Piles](https://foundryvtt.com/packages/item-piles)** | `ip_status` | Actif et configuré pour ce système ? Monnaies, chemins quantité/prix, module d'intégration — et quoi installer sinon (Item Piles 3 en exige un par système) |
+| | `ip_list_piles` / `ip_get_pile` | Lister les piles (acteurs du monde, tokens de scène) et en lire une côté serveur : réglages effectifs, objets avec quantité/prix, monnaies |
+| | `client_ip_create_pile` | Créer un tas, un coffre, un marchand ou un coffre-fort (acteur dédié + token) avec des objets de compendium et des monnaies ; survit une fois vidé |
+| | `client_ip_add_items` / `client_ip_remove_items` | Ajouter ou retirer objets et monnaies d'une pile |
+| | `client_ip_configure_pile` | Fermé/verrouillé, partage, prix d'achat/vente et modificateurs par acteur, tables de population ; macros de pile refusées |
+| | `client_ip_turn_into_pile` / `client_ip_revert_pile` · `client_ip_restock` | Transformer des tokens en piles à fouiller, et retour · regarnir un marchand depuis ses tables, ou tirer une table dans une pile |
+| **[Mass Edit](https://foundryvtt.com/packages/multi-token-edit)** | `me_list_presets` · `client_me_find_presets` | Lister les presets côté serveur depuis l'index de chaque compendium de presets · chercher comme le Preset Browser (syntaxe de requête, ou nom/tags/types), en signalant les presets à scripts ou à tuiles actives |
+| | `client_me_spawn_preset` | Poser un preset en x,y sur la scène affichée chez le MJ (pivot, caché, aimantation/échelle de grille) |
+| | `client_me_create_preset` | Enregistrer des éléments de la scène affichée comme preset (éléments attachés, tags, vignette) ; crée le pack de presets par défaut si besoin |
 
 ## 🛠️ Administration — le monde lui-même
 

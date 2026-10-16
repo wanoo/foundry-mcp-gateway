@@ -228,5 +228,55 @@
     "cmd": "mp_play_tags",
     "delivery": "unique",
     "tool": "client_mp_play_tags"
+  },
+  {
+    "cmd": "ip_create_pile",
+    "delivery": "unique",
+    "tool": "client_ip_create_pile"
+  },
+  {
+    "cmd": "ip_add_items",
+    "delivery": "unique",
+    "tool": "client_ip_add_items"
+  },
+  {
+    "cmd": "ip_remove_items",
+    "delivery": "unique",
+    "tool": "client_ip_remove_items"
+  },
+  {
+    "cmd": "ip_configure_pile",
+    "delivery": "unique",
+    "tool": "client_ip_configure_pile"
+  },
+  {
+    "cmd": "ip_turn_into_pile",
+    "delivery": "unique",
+    "tool": "client_ip_turn_into_pile"
+  },
+  {
+    "cmd": "ip_revert_pile",
+    "delivery": "unique",
+    "tool": "client_ip_revert_pile"
+  },
+  {
+    "cmd": "ip_restock",
+    "delivery": "unique",
+    "tool": "client_ip_restock"
+  },
+  {
+    "cmd": "me_find_presets",
+    "delivery": "unique",
+    "tool": "client_me_find_presets"
+  },
+  {
+    "cmd": "me_spawn_preset",
+    "delivery": "unique",
+    "tool": "client_me_spawn_preset"
+  },
+  {
+    "cmd": "me_create_preset",
+    "delivery": "unique",
+    "tool": "client_me_create_preset"
   }
 ]

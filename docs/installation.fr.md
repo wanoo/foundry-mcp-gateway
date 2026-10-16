@@ -32,7 +32,7 @@ sur un réseau Docker commun et indiquez explicitement le schéma `http://`.
 Un client IA local peut joindre le Gateway sur `http://127.0.0.1:8080`. Un client
 hébergé à distance a besoin d'une URL Gateway accessible en HTTPS ; l'exemple
 limité à la boucle locale ci-dessous n'est pas accessible depuis un connecteur
-hébergé. Consultez [l'hébergement](advanced.fr.md#hebergement).
+hébergé. Consultez [l'hébergement](advanced.fr.md#hébergement).
 Pour le Companion, ouvrez Foundry en HTTPS ou sur le localhost du navigateur :
 la vérification des signatures utilise Web Crypto, qui exige un contexte sécurisé.
 
@@ -209,4 +209,4 @@ Puis essayez :
 
 Avec un jeton créé avec `--readonly`, installez la clé de confiance via un jeton
 d'accès complet ou par la méthode manuelle avant d'utiliser le client en lecture
-seule. Si une vérification échoue, consultez le [dépannage](advanced.fr.md#depannage).
+seule. Si une vérification échoue, consultez le [dépannage](advanced.fr.md#dépannage).

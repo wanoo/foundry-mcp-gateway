@@ -75,14 +75,9 @@ minimum of v12 and is verified for v14; the paired 1.7 release was tested on
 **Foundry 14.369**. This does not claim that the complete application was tested
 on every Foundry build or every game system.
 
-## What changes in 1.7?
+## What changes in 1.8?
 
-**1.7 is the upcoming release described by this source tree.** At the publication
-check on 16 October 2026, the latest published releases of
-[Gateway](https://github.com/wanoo/foundry-mcp-gateway/releases/latest) and
-[Companion](https://github.com/wanoo/foundry-mcp-gateway-companion/releases/latest)
-were both 1.6.0. Installation links follow published releases; the 1.7 catalogue
-can therefore be ahead of the version you install.
+Gateway and Companion ship together: install the same **major.minor** of both.
 
 - **1.6 established access controls:** Biscuit client tokens and authenticated
   Companion commands replace the earlier shared-secret workflow.
@@ -91,9 +86,15 @@ can therefore be ahead of the version you install.
   search; countdowns, lighting and Mini Player ambience.
 - **1.7 also fixes Foundry 14 workflows**, including scene creation, targeting,
   live document updates and administration routes.
+- **1.8 prepares scenes and loot:** Monk's Active Tiles traps and switches
+  written from the server, Item Piles chests, piles and merchants, Mass Edit
+  presets placed or saved on a scene.
+- **1.8 closes code paths hidden in data:** tiles, region scripts, preset
+  scripts and pile macros obey the Companion's script settings, which the
+  Gateway can no longer change.
 
-The 1.7 catalogue has **166 tools**: 158 without an admin password, plus 8
-administration tools. It includes 69 read-only tools and 46 companion tools.
+The 1.8 catalogue has **184 tools**: 176 without an admin password, plus 8
+administration tools. It includes 76 read-only tools and 56 companion tools.
 Your token and configuration determine which tools your client can use.
 Browse the [full catalogue](docs/capabilities.md) or the [changelog](CHANGELOG.md).
 

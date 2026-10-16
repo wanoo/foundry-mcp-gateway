@@ -77,14 +77,10 @@ v12 et une version vérifiée v14 ; la paire 1.7 a été testée sur **Foundry 1
 Cela ne signifie pas que l'application complète a été testée sur chaque build
 Foundry ou chaque système de jeu.
 
-## Qu'apporte la 1.7 ?
+## Qu'apporte la 1.8 ?
 
-**La 1.7 est la prochaine version décrite par ces sources.** Lors de la vérification
-des publications du 16 octobre 2026, les dernières versions publiées du
-[Gateway](https://github.com/wanoo/foundry-mcp-gateway/releases/latest) et du
-[Companion](https://github.com/wanoo/foundry-mcp-gateway-companion/releases/latest)
-étaient toutes deux en 1.6.0. Les liens d'installation suivent les publications ;
-le catalogue 1.7 peut donc être en avance sur la version que vous installez.
+Gateway et Companion sont livrés ensemble : installez la même version
+**majeure.mineure** des deux.
 
 - **La 1.6 a établi les contrôles d'accès :** jetons clients Biscuit et commandes
   Companion authentifiées remplacent le fonctionnement à secret partagé.
@@ -93,14 +89,20 @@ le catalogue 1.7 peut donc être en avance sur la version que vous installez.
   Asset Librarian 1.4 ; comptes à rebours, éclairage et ambiances Mini Player.
 - **La 1.7 corrige aussi des parcours Foundry 14**, notamment la création de scènes,
   le ciblage, les mises à jour des documents en direct et les routes d'administration.
+- **La 1.8 prépare scènes et butin :** pièges et interrupteurs Monk's Active Tiles
+  écrits côté serveur, coffres, tas et marchands Item Piles, presets Mass Edit
+  posés ou enregistrés sur une scène.
+- **La 1.8 ferme les chemins de code cachés dans les données :** tuiles, scripts
+  de région, scripts de presets et macros de piles suivent les réglages de script
+  du Companion, que la Gateway ne peut plus modifier.
 
-Le catalogue 1.7 propose **166 outils** : 158 sans mot de passe administrateur,
-plus 8 outils d'administration. Il comprend 69 outils de lecture seule et
-46 outils compagnon. Votre jeton et votre configuration déterminent les outils
+Le catalogue 1.8 propose **184 outils** : 176 sans mot de passe administrateur,
+plus 8 outils d'administration. Il comprend 76 outils de lecture seule et
+56 outils compagnon. Votre jeton et votre configuration déterminent les outils
 accessibles à votre client. Consultez le [catalogue](docs/capabilities.fr.md)
 ou le [changelog](CHANGELOG.md), en anglais.
 
-Vous mettez à jour ? Le [guide avancé](docs/advanced.fr.md#mises-a-jour) sépare la
+Vous mettez à jour ? Le [guide avancé](docs/advanced.fr.md#mises-à-jour) sépare la
 migration depuis la 1.5 de la mise à jour 1.6 → 1.7. Gardez les deux composants
 sur le même **majeur.mineur**, par exemple 1.7.x ; les correctifs peuvent différer.
 
@@ -116,7 +118,7 @@ Companion.** Elles utilisent une clé stable distincte et une clé publique
 installée dans le monde. Elles ne chiffrent pas les réponses socket. Le JavaScript
 distant est désactivé par défaut ; les macros de script distantes demandent
 l'accord du MJ. Vos prompts ne remplacent pas ces réglages du module.
-Consultez la [configuration des accès](docs/advanced.fr.md#acces-et-confiance-du-companion).
+Consultez la [configuration des accès](docs/advanced.fr.md#accès-et-confiance-du-companion).
 
 ## Explorer et participer
 

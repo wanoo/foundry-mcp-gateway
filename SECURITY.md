@@ -53,9 +53,16 @@ what's at stake:
 - **`client_run_script` executes arbitrary JavaScript** in the GM's browser. It
   is off by default and must be enabled explicitly in the companion module's
   settings.
+- **Code can hide in data.** Monk's Active Tiles actions, core Region
+  `executeScript`/`executeMacro` behaviors, Mass Edit preset scripts and Item
+  Piles macros all run JavaScript from ordinary documents. Since 1.8 every
+  write is inspected and such content is refused unless the GM set the
+  companion's matching setting to « auto »; the gateway cannot change those
+  settings, and the companion reverts changes made by clients that do not run
+  it. A bypass of this guard is in scope for a report.
 - **`FOUNDRY_READONLY=1`** exists for untrusted or player-facing integrations:
-  it exposes only read-only tools and refuses writes at dispatch. The 1.7
-  catalogue has 69 with administration enabled, or 67 without it, before
+  it exposes only read-only tools and refuses writes at dispatch. The 1.8
+  catalogue has 76 with administration enabled, or 74 without it, before
   game-system filtering. Read-only access may still reveal GM-only content.
 
 Especially in scope for a report: credential leakage, authentication bypass on
