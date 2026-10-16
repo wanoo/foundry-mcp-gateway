@@ -82,7 +82,7 @@ pub const PILE_TYPES: &[&str] = &["pile", "container", "merchant", "vault"];
 #[rustfmt::skip]
 const SYSTEM_ADDONS: &[(&str, &str)] = &[
     ("dnd5e", "install the « Item Piles: D&D 5e » module (id itempilesdnd5e)"),
-    ("starwarsffg", "install the Star Wars FFG integration for Item Piles (github.com/maersk-aerospace/FoundryVTT-ItemPiles-StarWarsFFG)"),
+    ("starwarsffg", "install the « Item Piles: Star Wars FFG » module (id itempilesstarwarsffg, github.com/maersk-aerospace/FoundryVTT-ItemPiles-StarWarsFFG — Foundry 12-13)"),
     ("pf2e", "install the « Item Piles: PF2e » integration module"),
 ];
 
@@ -104,7 +104,7 @@ fn build_definitions() -> Vec<ToolDef> {
     let pile_type = json!({"type":"string","enum": PILE_TYPES});
     vec![
         ("ip_status",
-         "Item Piles: is the module active and configured for this game system? Reports the system, the currencies (name, abbreviation, attribute path or item), secondary currencies, the item quantity and price attribute paths, the actor type used for pile actors, the item filters, and the detected system integration module. Item Piles 3.x supports NO system by itself: each one needs an integration module (dnd5e: itempilesdnd5e; starwarsffg: maersk-aerospace/FoundryVTT-ItemPiles-StarWarsFFG) or a manual setup in Item Piles' module settings. When `ready` is false, every client_ip_* tool refuses with the same `message`.",
+         "Item Piles: is the module active and configured for this game system? Reports the system, the currencies (name, abbreviation, attribute path or item), secondary currencies, the item quantity and price attribute paths, the actor type used for pile actors, the item filters, and the detected system integration module. Item Piles 3.x supports NO system by itself: each one needs an integration module (dnd5e: itempilesdnd5e; starwarsffg: itempilesstarwarsffg) or a manual setup in Item Piles' module settings. When `ready` is false, every client_ip_* tool refuses with the same `message`.",
          json!({"type":"object","properties":{}})),
         ("ip_list_piles",
          "Item Piles: list item piles, read from the documents (no companion needed). scope world = actors flagged as piles (flags.item-piles.data.enabled), scene = tokens of a scene that are piles, all (default) = both. Each entry: uuid (pass it to ip_get_pile and client_ip_*), name, pile type (pile/container/merchant/vault), closed/locked, and for tokens the scene, position, linked flag and actor. type filters on the pile type.",
