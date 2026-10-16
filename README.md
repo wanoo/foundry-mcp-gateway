@@ -1,428 +1,127 @@
 <div align="center">
 
-<img src="assets/banner.png" alt="foundry-mcp-gateway" width="820">
+<img src="assets/banner.png" alt="MCP Foundry Gateway — the bridge between MCP clients and Foundry VTT" width="820">
 
-# 🎲 foundry-mcp-gateway
+# MCP Gateway for Foundry VTT
 
-**Give your AI assistant a seat at your gaming table.**
+**Prepare your next session with an AI that can work inside your Foundry world.**
 
-An independent [MCP](https://modelcontextprotocol.io) server for [Foundry VTT](https://foundryvtt.com) —
-one small Rust binary that logs into your world *like a player* and hands your AI **166 tools**
-to prep, run, and stage your games.
+Find campaign lore, create NPCs and journals, organize quests, and bring your table to life.
+MCP Gateway connects Claude or another compatible AI client to Foundry VTT through
+[MCP](https://modelcontextprotocol.io), the protocol that lets an assistant use external tools.
 
-[![Rust](https://img.shields.io/badge/Rust-single%20binary-orange?logo=rust)](https://www.rust-lang.org)
 [![Foundry](https://img.shields.io/badge/Foundry%20VTT-v13%20%7C%20v14-ff6400)](https://foundryvtt.com)
-[![MCP](https://img.shields.io/badge/MCP-2025--03--26-blue)](https://modelcontextprotocol.io)
+[![Docker](https://img.shields.io/badge/Docker-amd64%20%7C%20arm64-2496ed?logo=docker)](https://hub.docker.com/r/wanoo/foundry-mcp-gateway)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**🇫🇷 [Version française](README.fr.md)** · [Quick start](#-quick-start) · [What can it do?](#-what-your-ai-can-do-at-your-table) · [How it works](#%EF%B8%8F-how-it-works) · [Contributing](#-contributing)
+[Français](README.fr.md) · [Get started](docs/installation.md) · [All capabilities](docs/capabilities.md) · [Discussions](https://github.com/wanoo/foundry-mcp-gateway/discussions)
 
 </div>
 
----
+## From an idea to a prepared session
 
-## ✨ Why?
+Your campaign already lives in Foundry. Let your assistant work with its actual
+journals, actors, scenes and compendia, then save the preparation where you use it.
+For example:
 
-You spend hours preparing sessions: writing journals, statting NPCs, building scenes,
-digging through compendia. Your AI assistant already knows your campaign — this server
-lets it **act** on it:
+> “Read our session notes and create a GM journal with unresolved leads and three hooks for next time.”
 
-> *“Summarize what the party learned on Toydaria, then prep three rumors for the
-> market scene — as journal entries in the Act VI folder.”*
->
-> *“Roll Perception for Pahas'Tis, hidden.”*
->
-> *“Make it rain on this scene, dim the mood, and play a sting when the door opens.”*
+> “Find the innkeeper and their linked locations. Draft two rumors and add them to a new journal.”
 
-No module required in Foundry to get started. No browser to keep open. It runs 24/7
-against your world, from any machine — or free-tier cloud hosting.
+> “Review our active quests, propose next-session objectives, and wait for my approval before updating them.”
 
-## 🚀 Quick start
+The core document tools work across game systems. Dedicated dice and character
+helpers support **Star Wars FFG, D&D 5e and Daggerheart**. Optional integrations
+connect campaign sheets, calendars, assets and ambience to the same workflow.
 
-> **Upgrading from 1.5?** `MCP_SECRET` is gone. Run `foundry-mcp --generate-mcp-key`,
-> set `MCP_ROOT_PRIVATE_KEY`, then `foundry-mcp --mint-token <name>` and point your
-> client at `/mcp-<token>`. Tokens expire, can be scoped read-only, and can be
-> revoked one at a time — none of which a shared secret could do.
+During a session, your assistant can also reveal a handout, move the party to a
+scene, roll dice, ask a player a question, or cue sound and visual effects.
+Browser actions use the Companion; some effects also need their Foundry modules.
+See the [capabilities and dependencies](docs/capabilities.md).
 
+## One application, two components
 
-**Before you start**, you need:
-
-- a Foundry world the gateway can reach. Two cases, and the easy one is easier
-  than it looks:
-  - **same machine or same LAN** — `localhost:30000` works as-is, plain HTTP,
-    any port. A Raspberry Pi, a NAS or a homelab box running both Foundry and
-    the gateway needs nothing else;
-  - **gateway hosted elsewhere** (cloud, free tier) — then the world does need
-    to be reachable from the internet over HTTPS, because that's the only way
-    a remote gateway can log in;
-- Gamemaster access to it;
-- about 10 minutes.
-
-**No Rust toolchain needed.** A prebuilt image is published for **amd64 and
-arm64**, so `docker run wanoo/foundry-mcp-gateway` works on a Raspberry Pi or a
-NAS exactly as it does on a server — see the Docker section below.
-
-**1 · Create a bot user in Foundry** — as GM: *Configure Players → Create Additional
-User*, e.g. `MCP-Bot`, role **Gamemaster**, with a password. (A lower role works
-and is safely refused by Foundry for anything it lacks rights for — but writes,
-combat and session tools then fail, so the full toolset needs Gamemaster.) Then grab its 16-char
-`_id`:
-
-> Enter your world as Gamemaster, open the browser console
-> (<kbd>F12</kbd> → *Console*), paste this and press Enter:
->
-> ```js
-> game.users.getName("MCP-Bot").id
-> ```
->
-> It prints something like `"AbCdEfGh12345678"` — that's your `userid`.
-
-<details>
-<summary>Why not read it off the login page?</summary>
-
-Because it isn't there. Foundry v13's `/join` page is a 2 KB shell that builds
-its user list client-side, so `view-source` and `curl | grep` show nothing —
-a trap this README used to fall into. The console line above reads the same
-data the page itself uses.
-
-Once the gateway is running, `manage_users` lists every account and id for you.
-</details>
-
-**2 · Configure & run the server.** Three ways — **pick one**. No Rust on your
-machine? Use ☁️ Clever Cloud or 🐳 Docker below, they build everything for you.
-Two settings matter everywhere: `MCP_ROOT_PRIVATE_KEY` (it authenticates
-your MCP clients) and `FOUNDRY_CREDENTIALS_JSON` (who the bot is, where).
-
-With Rust installed, locally:
-
-```sh
-export MCP_ROOT_PRIVATE_KEY="…"                   # from --generate-mcp-key
-export FOUNDRY_CREDENTIALS_JSON='[{
-  "_id": "my-world",
-  "hostname": "my-host.com/my-world",             # route prefix supported;
-                                                  # local/dev: "localhost:30000" or
-                                                  # "http://foundry.lan:30000"
-  "userid": "AbCdEfGh12345678",
-  "password": "the-bot-password"
-}]'
-export FOUNDRY_ADMIN_PASSWORD="…"                 # optional: unlocks admin_* tools
-
-cargo run --release                                # binary: target/release/foundry-mcp
-```
-
-<details>
-<summary>☁️ Deploy on Clever Cloud (5 commands)</summary>
-
-```sh
-clever create --type rust foundry-mcp-gateway
-clever env set MCP_ROOT_PRIVATE_KEY "…"           # from --generate-mcp-key
-clever env set FOUNDRY_CREDENTIALS_JSON '[{"_id":"…","hostname":"…","userid":"…","password":"…"}]'
-clever env set CC_RUST_BIN foundry-mcp
-clever deploy
-```
-</details>
-
-<details>
-<summary>🐳 Run with Docker</summary>
-
-```sh
-docker build -t foundry-mcp-gateway .
-docker run -d --name foundry-mcp -p 8080:8080 \
-  -e MCP_ROOT_PRIVATE_KEY="…" \
-  -e FOUNDRY_CREDENTIALS_JSON='[{"_id":"…","hostname":"…","userid":"…","password":"…"}]' \
-  foundry-mcp-gateway
-```
-
-Or with compose:
-
-```yaml
-services:
-  foundry-mcp:
-    build: .
-    ports: ["8080:8080"]
-    environment:
-      MCP_ROOT_PRIVATE_KEY: "…"
-      FOUNDRY_CREDENTIALS_JSON: '[{"_id":"…","hostname":"…","userid":"…","password":"…"}]'
-      # FOUNDRY_ADMIN_PASSWORD: "…"
-    restart: unless-stopped
-```
-
-The image has a built-in `/health` healthcheck. Put HTTPS in front (reverse
-proxy) before exposing it to the internet — the secret rides in the URL.
-</details>
-
-### 📦 Install without building
-
-```sh
-# Docker (amd64 + arm64)
-docker run -d -p 8080:8080 \
-  -e MCP_ROOT_PRIVATE_KEY="…" \
-  -e FOUNDRY_CREDENTIALS_JSON='[{"_id":"…","hostname":"…","userid":"…","password":"…"}]' \
-  wanoo/foundry-mcp-gateway
-
-# or a prebuilt binary, no compiling
-cargo binstall foundry-mcp-gateway
-
-# or from source
-cargo install foundry-mcp-gateway
-```
-
-**3 · Connect your AI:**
-
-```sh
-claude mcp add foundry --transport http https://YOUR-DEPLOYMENT/mcp-<secret>
-```
-
-Claude Desktop: *Settings → Connectors → Add custom connector*, same URL.
-Then just ask: *“ping my Foundry”* — a `connected: true` means you're live.
-Several worlds? Put several objects in the credentials array and switch with
-`choose_foundry_instance`.
-
-**4 · (Recommended) install the companion module** — see [below](#-the-companion-module).
-
-### 🆘 If something doesn't work
-
-| Symptom | Likely cause → fix |
-|---|---|
-| `/health` doesn't answer | The server isn't running / wrong URL — check your deployment logs |
-| `ping` says not connected | The world isn't **launched** (login page must be visible), or wrong `userid`/`password` — the server retries forever, fix and wait a few seconds |
-| Every `client_*` tool times out | The companion isn't installed/enabled, **or no GM browser is connected**, or the GM tab is asleep (browsers freeze background tabs — bring it to the front) |
-| Tools disappeared after an update | Your MCP client caches the tool list — reconnect it (Claude Code: `/mcp`) |
-| `admin_*` tools missing | `FOUNDRY_ADMIN_PASSWORD` isn't set on the server |
-
-## 🧙 What your AI can do at your table
-
-**166 tools**, organized the way a GM works — 158 always, plus 8 administration
-tools that appear only when `FOUNDRY_ADMIN_PASSWORD` is set. 69 read-only tools
-are flagged as such so your MCP client can auto-approve them; only the two
-deletions are marked destructive. Check what your own deployment exposes with
-`foundry-mcp --dump-tools`.
-
-### 📖 Prep — build and query your world
-
-| Tools | What for |
-|---|---|
-| `get_actors` `get_items` `get_journals` `get_scenes` `get_tables` `get_macros` `get_playlists` `get_cards` `get_combats` `get_messages` `get_folders` `get_users` `get_settings` (+ singular forms) | Read **any** collection — filters with dotted paths & operators (`__in`, `__contains`, `__ne`, `__exists`), field projection, pagination. ~7,000 journals listed in ~0.3 s |
-| `search_journals` · `export_journals` | Full-text search · Markdown export of your whole lore |
-| `create_document` `modify_document` `delete_document` | Write anything: journals, actors, scenes… embedded docs via `parent_uuid`, compendia via `pack` |
-| `list_compendium_packs` `get_pack_documents` `import_from_compendium` `create_compendium` `delete_compendium` | Full compendium workflow |
-| `browse_files` `create_directory` `upload_file` | File storage — upload maps & art by URL or base64 |
-| `get_world` `ping` `get_setting` `set_setting` `show_credentials` `choose_foundry_instance` | World metadata, health, settings, multi-world |
-| `companion_trust_key` | Install this gateway's signing key in the world, so the companion accepts its commands |
-
-### 🎬 Run the session — the GM's remote control
-
-| Tools | What for |
-|---|---|
-| `show_journal_to_players` · `share_image` | “Everyone, look at this” — handouts, art reveals |
-| `activate_scene` `get_current_scene` `pull_users_to_scene` | Scene changes, drag the party along |
-| `list_tokens` `place_token` `move_token` `update_token` | Token control on the live scene |
-| `toggle_actor_condition` (27 core statuses) · `apply_critical_injury` | Conditions & crits |
-| `manage_combat` (create / initiative / turns / end) · `get_combat` | Full combat lifecycle |
-| `control_playlist` · `draw_from_table` | Music control · roll on your d100 tables |
-| `toggle_pause` · `wait_for_message` · `get_events` | Pause · wait for a player's chat reply · live event feed (writes, chat, combat) |
-| `list_actor_ownership` `set_actor_ownership` · `grant_xp` | Permissions & rewards |
-
-### 👁️ Perception — the AI *sees* your table *(companion)*
-
-| Tool | What for |
-|---|---|
-| 📸 `client_capture` | Screenshot of the GM's view, returned as a real image — the AI literally sees the map |
-| 🗺️ `client_scene_report` | Machine-readable scene: tokens with grid coords, disposition, **real** visibility, doors, lights, templates |
-| 📊 `client_get_derived` | The **prepared** values of any sheet (post-`prepareData` + active effects) — source docs often store 0 where players see the real stat |
-| 🔗 `client_enrich` | Enriched HTML: `@UUID` links resolved, inline rolls evaluated, GM secrets |
-| 🔎 `client_search` | Name search across every collection via the client index |
-| 🌍 `client_babele` | [Babele](https://foundryvtt.com/packages/babele) translations: reverse search by **displayed** name (find “Force Lightning” from “Éclair de Force”), translated indexes & documents |
-
-### 🗣️ Interact — a dialogue with your players *(companion)*
-
-| Tool | What for |
-|---|---|
-| ❓ `client_ask` | Pose a question in a real dialog **on a player's screen** and get their answer back |
-| 🎲 `client_roll_formula` | **Any formula, any system** through Foundry's real `Roll` engine — native chat card, Dice So Nice, actor roll data, per-die results |
-| 📣 `client_notify` · 🔔 `client_ping` · 🎥 `client_pan_camera` | Notifications, map pings, “everyone look here” camera moves — all targetable (`gm` / `players` / user ids) |
-| 📜 `client_show_document` | Open a sheet on the targeted clients |
-| 🎯 `client_select` / `client_target` · 🌫️ `client_fog` | Real selection & crosshair targets · reset explored fog |
-| 📡 `client_get_state` · `client_status` | Who's connected, viewing what · companion health & detected deps |
-| 🚀 `client_run_macro` · `client_run_script` | Run any macro (the universal key) · arbitrary JS (**off by default**, GM opt-in) |
-
-### 🌦️ Atmosphere — stagecraft *(companion)*
-
-| Tool | What for |
-|---|---|
-| 🌧️ `client_weather` / `client_weather_types` | [FXMaster](https://foundryvtt.com/packages/fxmaster) particles: rain, fog, embers, snow, bats… |
-| ✨ `client_play_effect` · `client_seq_between` · `client_seq_sound` | [Sequencer](https://foundryvtt.com/packages/sequencer) effects at a point, **between tokens** (projectiles!), sounds |
-| 🎇 `client_token_fx` / `client_token_fx_presets` | [Token Magic FX](https://foundryvtt.com/packages/tokenmagic): glow, fire, shadow… 70 presets |
-| 🗂️ `client_effect_catalog` | Search the installed effect database (JB2A & co) for valid paths |
-| 🔊 `client_play_sound` | One-shot sound sting, no playlist needed |
-| 🎞️ `mat_list` · `client_mat_trigger` | [Monk's Active Tiles](https://foundryvtt.com/packages/monks-active-tiles): list & fire trigger tiles (teleports, scene changes, chains) |
-
-### 🎲 Dice & game systems
-
-Game-specific logic lives in pluggable modules ([add yours!](#-contributing)):
-
-| System | Tools |
-|---|---|
-| **Star Wars FFG** | `roll_actor_skill` (pool **derived from the sheet**: species, talents, gear), `roll_ffg_pool`, `request_player_roll` (chat button opens their roll dialog), `adjust_actor_stats`, `adjust_destiny`, `grant_xp`, `apply_critical_injury` · companion: `client_roll_pool_native` (**real FFG engine + Dice So Nice 3D dice**) |
-| **D&D 5e** | `dnd5e_roll_check` (sheet-derived modifiers, advantage, DC, nat 20/1), `dnd5e_adjust_stats` |
-| **Daggerheart** | `dh_roll_duality` (Hope/Fear 2d12), `dh_roll_actor_trait`, `dh_adjust_stats` |
-
-All modules load by default; restrict with `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
-
-### 🗃️ Campaign management — the [wgtnGM](https://campaigncodex.wgtngm.com/) suite
-
-| Addon | Tools | What for |
+| Component | Where it runs | What it contributes |
 |---|---|---|
-| **[Campaign Codex](https://foundryvtt.com/packages/campaign-codex)** 6.9 | `cc_list_sheets` `cc_get_sheet` `cc_create_sheet` `cc_link` | Sheets in the 6.x format (managed Information / GM Notes pages, hidden from players unless `player_visible`), links written on **both** sides for every relation, with unlinking and cycle guards |
-| | `cc_quest_update` / `cc_objective` | Quests: status, pin, urgency, giver, related sheets, rewards, check-ins, optional chat notice — and the nested objective tree |
-| | `cc_set_visibility` / `cc_set_content` | What players see (sheet, per-tab GM-only, hidden links) and the prose (Information, GM Notes, custom tabs) |
-| | `cc_shop_set_item` · companion: `client_cc_shop_add_item` | Shop inventory: add items through Campaign Codex, then quantity, custom price, infinite stock, visibility, markup |
-| | `cc_webhub_status` / `cc_webhub_exclude` | Web Hub Sync: read which sheets are synced, exclude sensitive ones — a flag only, **never** triggers a sync |
-| | companion: `client_cc_convert` `client_cc_open_toc` `client_cc_open_quest_board` `client_cc_open_sheet` `client_cc_migrate_content` `client_cc_export_obsidian` | Convert journals into sheets, open the Hub / quest board / a sheet without toggling them shut, repair old sheets, Obsidian export |
-| **Asset Librarian** 1.4 | `al_tag` `al_find` `al_list_tags` `al_image_tags` · companion: `client_al_search` `client_al_open` | Tag documents (category + filter tags, as arrays), find them by tag, list the tag registry and groups, read image tags, search assets and open the browser pre-filtered |
-| **Mini Calendar** 10 | `mc_get_time` `mc_set_time` `mc_list_notes` `mc_add_note` `mc_update_note` `mc_delete_note` | World time, and calendar notes read and written the way the module stores them |
-| | `mc_get_weather` `mc_weather_types` `mc_calendar_info` · companion: `client_mc_set_weather` | Forecast (°C and °F), usable weather types, calendar setup (months, seasons, moons, sun); force the weather of a day |
-| | companion: `client_mc_get_date` `client_mc_set_date` `client_mc_set_time` `client_mc_open` | Live date (season, moon phases), jump to a date or to dawn / noon / dusk / midnight, *next* or in N days |
-| **Mini Countdown Dice** | `cd_list` / `cd_set` | Threat clocks and countdowns shown to everyone: create, set, ±delta, auto-count on turn or round, show/hide, lock to a scene |
-| **Mini Light Switch** | `ls_lights` / `ls_toggle` | List a scene's lights, switch them on/off by id or Tagger tag, set the animated graphic — works even without the module |
-| **Mini Player** | `mp_list_presets` `mp_scene_audio` · companion: `client_mp_play_preset` `client_mp_play_tags` | Start a saved ambience or music by tags; set the audio a scene plays when activated |
-| **Mini Rolltable** | `draw_from_table` | Quantities (`1d4+1` goblins) and linked tables are honoured, up to 5 levels deep |
+| **Gateway** — this repository | A machine that can reach Foundry; Docker or a Rust binary | The MCP endpoint, Foundry connection, document tools and integrations |
+| **[Companion](https://github.com/wanoo/foundry-mcp-gateway-companion)** | A module in your Foundry world, running in the GM's browser | Live sheet values, scene captures, native rolls, player dialogs and browser APIs |
 
-### 🛠️ Administration — the world itself
-
-`manage_modules` & `admin_edit_world` always work. The rest appears only when
-`FOUNDRY_ADMIN_PASSWORD` is set.
-
-| Tool | What for |
-|---|---|
-| 🩺 `admin_status` | `/api/status` — works even with the world down |
-| ✏️ `admin_edit_world` | World title, description, background image, next-session date — while it runs |
-| 🧩 `manage_modules` | Installed vs enabled (with versions) · enable/disable |
-| 👥 `manage_users` | Player / GM / assistant-GM accounts: list, create, change roles, assign characters (passwords stay in Foundry) |
-| 💾 `admin_list_backups` / `admin_backup_world` | Foundry's own backups — and `admin_update_package` takes one automatically first |
-| ⏻ `admin_shutdown_world` / `admin_launch_world` | Stop & start worlds (the bot reconnects by itself) |
-| ⬆️ `admin_check_package` / `admin_update_package` | Update modules, **systems**, worlds — check → install → verify, refuses while a world runs |
-
-
-### 🌍 Several worlds at once
-
-Put several objects in `FOUNDRY_CREDENTIALS_JSON` and the gateway serves them
-**simultaneously** — one socket per instance, opened on demand:
-
-- every tool takes an optional `instance` (the `_id` from `show_credentials`);
-- `choose_foundry_instance` only moves the *default* — the others stay connected;
-- **`copy_documents`** moves content between two instances: pick with
-  `where`/`ids`, `_id`s preserved so `@UUID` links survive, folders recreated,
-  `dry_run` to preview, `overwrite` to update the target's twins instead of
-  duplicating them.
-
-```jsonc
-// "prep in my sandbox world, then push to the live one"
-copy_documents { from: "sandbox", to: "live", collection: "journals",
-                 where: { "folder": "aBcD…" }, dry_run: true }
-```
-
-Different servers? Documents alone would leave dangling image paths, so pair it
-with **`copy_assets`**, which walks the source storage, recreates the tree on the
-target and uploads what's missing (streamed through the gateway — the two servers
-never talk to each other). Both tools are incremental: re-running them only moves
-what changed.
-
-
-### 🚚 Migrating a world to another server
-
-The whole chain is covered — run each step with `dry_run` first:
-
-| Step | Tool |
-|---|---|
-| 1. Bring the target to parity | `manage_modules` (see what's there) → `admin_install_package` (system + modules) |
-| 2. Create the destination world | `admin_create_world` |
-| 3. Pour the content in | `copy_documents`, collection by collection: folders → journals/items/tables → actors → scenes |
-| 4. Carry the files | `copy_assets` (otherwise images dangle) |
-| 5. Recreate the players | `manage_users` (names, roles, characters — **passwords stay with the GM**) |
-
-`_id`s are preserved throughout, so `@UUID` links and scene→actor references
-survive the move.
-
-### 🧠 Beyond tools — native MCP goodies
-
-- **Resources** — browse actors & journals with cursor pagination, pin them into context
-- **Prompts** — `session-recap`, `world-overview`, `prep-checklist`, pre-filled with live data
-- **Subscriptions** — `resources/updated` pushed when a subscribed document changes
-- **SSE notifications** — every Foundry broadcast relayed on the stream
-
-Integrating programmatically (not through an AI)? **[docs/integrators.md](docs/integrators.md)**
-documents the exact response shapes — envelope, reads, events, companion, admin.
-
-## 🧩 The companion module
-
-The socket protocol only reaches *documents*. Everything marked *(companion)* above
-needs **[foundry-mcp-gateway-companion](https://github.com/wanoo/foundry-mcp-gateway-companion)**
-— a tiny Foundry module running in the GM's browser that executes what the server
-delegates: 36 handlers behind the `client_*` tools.
-
-- Optional: without it, `client_*` tools time out with a clear message; everything else works.
-- Install: *Add-on Modules → Install → manifest URL*:
-  `https://github.com/wanoo/foundry-mcp-gateway-companion/releases/latest/download/module.json`
-- Safe by default: `client_run_script` (arbitrary JS) is **off** until the GM enables it.
-- Degrades gracefully: each integration activates only if its module is present
-  (Dice So Nice, Sequencer, FXMaster, Token Magic, Campaign Codex, Babele…).
-
-## 🏗️ How it works
+**Install both for the full experience.** The Gateway can also prepare documents
+on its own, without a GM browser open. Companion tools need a connected GM
+browser with an awake tab; the Gateway's bot connection does not replace it.
+Your AI client and Foundry installation are separate prerequisites.
 
 ```mermaid
 flowchart LR
-    A["🤖 AI assistant<br/>(Claude Code, Desktop, any MCP client)"]
-    B["🦀 foundry-mcp-gateway<br/>one Rust binary"]
-    C["🎲 Foundry VTT server"]
-    D["🧩 Companion module<br/>(GM's browser)"]
-    A <-- "MCP · streamable HTTP<br/>POST + SSE" --> B
-    B <-- "native socket client<br/>(logs in like a player)" --> C
-    C <-- "module socket channel" --> D
+    AI["AI client"] <-->|"MCP · Biscuit token"| G["Gateway"]
+    G <-->|"Foundry login + socket"| F["Foundry VTT"]
+    F <-->|"Signed commands + results"| C["Companion · GM browser"]
 ```
 
-- **No SDK, no wrapper** — the MCP spec (2025-03-26) and Foundry's Engine.IO/Socket.IO
-  protocol are implemented directly: handshake, ping-pong, emit/ack correlation,
-  broadcast buffering.
-- **v13 & v14** — session binding (query vs cookie) auto-detected via `/api/status`;
-  route prefixes (`host.com/my-world`) supported.
-- **Fast** — per-collection reads with server-side query pushdown and DB-index
-  listings; never a full world dump (except `get_world`).
-- **Self-healing** — infinite reconnection with backoff; survives world restarts and
-  even a v13→v14 upgrade mid-flight.
-- **Companion protocol** — commands ride the module's socket channel with three
-  delivery modes: *scene* (all targeted clients run it), *addressed* (the targeted
-  client answers — `client_ask`), *unique* (one elected GM responder answers).
-- **Every integration is verified against a live world** before it ships — data paths
-  differ across system versions, and guessing is how tools lie.
+## Get connected
 
-## 🤝 Contributing
+Follow the **[installation guide](docs/installation.md)** for a complete Docker
+setup with copyable commands. No Rust toolchain is needed.
 
-The core is 100 % system-agnostic — everything game- or addon-specific is a plugin.
-**[CONTRIBUTING.md](CONTRIBUTING.md)** walks you through both extension points:
+1. Launch your Foundry world and create a dedicated bot user.
+2. Generate an MCP root key, a client token and a stable Companion signing key.
+3. Start the Gateway using the published Docker image and your Foundry credentials.
+4. Add its `/mcp-<token>` URL to your AI client's Streamable HTTP connections.
+5. Install and enable the Companion, run `companion_trust_key`, and reload GM browsers.
+6. Ask your assistant to run `ping` and `client_status`.
 
-- **🎮 A game system** (`src/systems/<id>.rs`): three functions (`definitions`,
-  `handles`, `run`), dice engines with injectable RNG so tests stay deterministic.
-  `swffg.rs` is the reference — including a sheet-derivation engine.
-- **🧩 An addon integration**: server tool (`src/tools/`) + companion handler
-  (`scripts/addons/*.mjs`) speaking a tiny command protocol.
+Foundry v13 and v14 are supported by the Gateway. The Companion declares a
+minimum of v12 and is verified for v14; the paired 1.7 release was tested on
+**Foundry 14.369**. This does not claim that the complete application was tested
+on every Foundry build or every game system.
 
-Ground rule either way: **verify your data paths against a real world** and say which
-version you validated. `cargo test` must stay green.
+## What changes in 1.7?
 
-## 🔗 Versions
+**1.7 is the upcoming release described by this source tree.** At the publication
+check on 16 October 2026, the latest published releases of
+[Gateway](https://github.com/wanoo/foundry-mcp-gateway/releases/latest) and
+[Companion](https://github.com/wanoo/foundry-mcp-gateway-companion/releases/latest)
+were both 1.6.0. Installation links follow published releases; the 1.7 catalogue
+can therefore be ahead of the version you install.
 
-The gateway and the [companion module](https://github.com/wanoo/foundry-mcp-gateway-companion)
-move together: they must match on **major.minor** (1.5.x on both sides), because
-that's what a protocol change bumps. Patch releases are independent — a fix to
-one half doesn't oblige the other to reissue. Run `client_status`: it compares
-them and names the half to update when they've actually drifted apart.
+- **1.6 established access controls:** Biscuit client tokens and authenticated
+  Companion commands replace the earlier shared-secret workflow.
+- **1.7 expands campaign preparation:** Campaign Codex 6.9 quests, objectives,
+  visibility and shops; Mini Calendar 10 dates and weather; Asset Librarian 1.4
+  search; countdowns, lighting and Mini Player ambience.
+- **1.7 also fixes Foundry 14 workflows**, including scene creation, targeting,
+  live document updates and administration routes.
 
-## 📋 Changelog
+The 1.7 catalogue has **166 tools**: 158 without an admin password, plus 8
+administration tools. It includes 69 read-only tools and 46 companion tools.
+Your token and configuration determine which tools your client can use.
+Browse the [full catalogue](docs/capabilities.md) or the [changelog](CHANGELOG.md).
 
-Versioned with semver — response shapes only change on a major bump.
-See [CHANGELOG.md](CHANGELOG.md).
+Upgrading? The [advanced guide](docs/advanced.md#upgrading) separates the
+1.5 migration from the 1.6 → 1.7 update. Keep both components on the same
+**major.minor**, for example 1.7.x; patch numbers may differ.
 
-## 📜 License
+## Access and trust
 
-[MIT](LICENSE). Not affiliated with Foundry Gaming LLC.
+**Biscuit tokens control access from your AI client to the Gateway.** Each token
+expires, can be restricted to read-only access, and can be revoked individually.
+The full connection URL is a credential: keep it private and use HTTPS when
+exposing the Gateway beyond your machine.
+
+**ECDSA P-256 signatures authenticate Gateway commands to the Companion.** This
+uses a separate, stable key and a public key installed in your world. It does
+not encrypt socket replies. Remote JavaScript is off by default; remote script
+macros ask the GM first. Your prompts do not replace these module settings.
+See [configuration and trust](docs/advanced.md#access-and-companion-trust).
+
+## Explore and join in
+
+- [Installation](docs/installation.md) — Docker, keys, first connection and Companion setup.
+- [Capabilities and integrations](docs/capabilities.md) — tools grouped by GM workflow and their dependencies.
+- [Advanced configuration and troubleshooting](docs/advanced.md) — native installs, Compose, hosting, access controls and multiple worlds.
+- [Integrator contract](docs/integrators.md) — response shapes for applications calling MCP directly.
+- [GitHub Discussions](https://github.com/wanoo/foundry-mcp-gateway/discussions) — share a preparation workflow, suggest an integration or ask for help.
+- [Report a Gateway bug](https://github.com/wanoo/foundry-mcp-gateway/issues) · [Report a Companion bug](https://github.com/wanoo/foundry-mcp-gateway-companion/issues).
+- [Contribute](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md).
+
+[MIT licensed](LICENSE). Independent project, not affiliated with Foundry Gaming LLC.

@@ -50,11 +50,15 @@ world" is an accepted answer, and it tells the reviewer exactly what to run.
 
 ### Docs are checked, not trusted
 
-`./scripts/check-docs.sh` compares what the READMEs claim against what the binary
-actually exposes: tool counts, read-only counts, unit-test count, tools that
-exist but aren't documented, and tools documented but non-existent. It runs in
-CI. This exists because those numbers drifted three times — the READMEs once
-announced 131 *and* 134 tools on the same page.
+`./scripts/check-docs.sh` compares each language's README and user guides against
+what the binary actually exposes: total, base, read-only and companion tool
+counts, unit-test count, tools that exist but aren't documented, and tools
+documented but non-existent. Each translation must cover the complete catalogue,
+including singular reads. Keep the [English](docs/capabilities.md) and
+[French](docs/capabilities.fr.md) catalogues aligned when adding tools. The check
+runs in CI independently of the developer's runtime environment. This exists
+because those numbers drifted three times — the READMEs once announced 131
+*and* 134 tools on the same page.
 
 ## 🎮 Adding a game system
 
