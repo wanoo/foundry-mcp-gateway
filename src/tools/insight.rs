@@ -36,10 +36,10 @@ fn build_definitions() -> Vec<ToolDef> {
             "effects":{"type":"boolean","description":"include active effects (default true)"}},
             "required":["uuid"]})),
         ("client_enrich",
-         "Return the ENRICHED HTML of a document (or raw html): @UUID links resolved to names, inline rolls evaluated, secrets revealed. The server only ever sees the raw source text.",
+         "Return the ENRICHED HTML of a document (or raw html): @UUID links resolved to names, inline rolls evaluated; GM secret blocks only with secrets:true (the reply crosses the shared module socket). The server only ever sees the raw source text.",
          json!({"type":"object","properties":{
             "uuid":{"type":"string"},"html":{"type":"string"},
-            "secrets":{"type":"boolean","description":"reveal GM secret blocks (default true)"}}})),
+            "secrets":{"type":"boolean","description":"include GM secret blocks (default false)"}}})),
         ("client_search",
          "Search every world collection by name through the client index (Actors, Items, Journals, Scenes, Tables, Macros, Cards, Playlists). Returns uuid + folder for each hit.",
          json!({"type":"object","properties":{
