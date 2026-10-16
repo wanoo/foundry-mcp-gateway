@@ -117,7 +117,7 @@ fn build_definitions() -> Vec<ToolDef> {
             "playlist":{"type":"string"},"action":{"type":"string","enum":["play","stop"]},
             "sound":{"type":"string"}},"required":["playlist","action"]})),
         ("draw_from_table",
-         "Draw from a RollTable server-side (NdM±k formula, range pick, modifier, multi-rolls, chat post).",
+         "Draw from a RollTable server-side (NdM±k formula, range pick, modifier, multi-rolls, chat post). Results linked to another world RollTable are drawn recursively (up to 5 levels, subDraws). Mini Rolltable quantities (flags[\"mini-rolltable\"].quantity: integer or NdM±k) are rolled and returned as quantity (a linked table is drawn that many times). Does not mark results as drawn (tables without replacement are not depleted); compendium-linked tables are not followed.",
          json!({"type":"object","properties":{
             "table":{"type":"string"},"modifier":{"type":"number"},"rolls":{"type":"number"},
             "post":{"type":"boolean"},"whisper_users":{"type":"array","items":{"type":"string"}}},
@@ -418,11 +418,17 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(h) = args.get("hidden").and_then(Value::as_bool) {
                 token["hidden"] = json!(h);
             }
-            let result = foundry.modify_document("Token", "create", json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                "parentUuid": format!("Scene.{}", scene["_id"].as_str().unwrap_or("")),
-                "data": [token],
-            })).await?;
+            let result = foundry
+                .modify_document(
+                    "Token",
+                    "create",
+                    json!({
+                        "action": "create", "renderSheet": false, "keepId": false,
+                        "parentUuid": format!("Scene.{}", scene["_id"].as_str().unwrap_or("")),
+                        "data": [token],
+                    }),
+                )
+                .await?;
             Ok(text_response(&json!({
                 "actor": {"_id": actor["_id"], "name": actor["name"]},
                 "scene": {"_id": scene["_id"], "name": scene["name"]},
@@ -473,11 +479,17 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         "condition": condition, "unchanged": "already active",
                     })));
                 }
-                let result = foundry.modify_document("ActiveEffect", "create", json!({
-                    "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                    "parentUuid": parent,
-                    "data": [{"name": status.1, "img": status.2, "statuses": [condition]}],
-                })).await?;
+                let result = foundry
+                    .modify_document(
+                        "ActiveEffect",
+                        "create",
+                        json!({
+                            "action": "create", "renderSheet": false, "keepId": false,
+                            "parentUuid": parent,
+                            "data": [{"name": status.1, "img": status.2, "statuses": [condition]}],
+                        }),
+                    )
+                    .await?;
                 Ok(text_response(&json!({
                     "actor": {"_id": actor["_id"], "name": actor["name"]},
                     "condition": condition, "added": true, "result": result,
@@ -491,9 +503,15 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 }
                 let ids: Vec<Value> = existing.iter().map(|e| e["_id"].clone()).collect();
                 let removed = ids.len();
-                let result = foundry.modify_document("ActiveEffect", "delete", json!({
-                    "action": "delete", "broadcast": false, "parentUuid": parent, "ids": ids,
-                })).await?;
+                let result = foundry
+                    .modify_document(
+                        "ActiveEffect",
+                        "delete",
+                        json!({
+                            "action": "delete", "parentUuid": parent, "ids": ids,
+                        }),
+                    )
+                    .await?;
                 Ok(text_response(&json!({
                     "actor": {"_id": actor["_id"], "name": actor["name"]},
                     "condition": condition, "removed": removed, "result": result,
@@ -651,7 +669,7 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                 "Combat",
                 "create",
                 json!({
-                    "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+                    "action": "create", "renderSheet": false, "keepId": false,
                     "data": [{"scene": scene["_id"], "active": true}],
                 }),
             )
@@ -671,10 +689,16 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                     })
                 })
                 .collect();
-            foundry.modify_document("Combatant", "create", json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                "parentUuid": format!("Combat.{combat_id}"), "data": data,
-            })).await?;
+            foundry
+                .modify_document(
+                    "Combatant",
+                    "create",
+                    json!({
+                        "action": "create", "renderSheet": false, "keepId": false,
+                        "parentUuid": format!("Combat.{combat_id}"), "data": data,
+                    }),
+                )
+                .await?;
         }
         return Ok(text_response(&json!({
             "combat": combat_id,
@@ -749,10 +773,16 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                     })
                 })
                 .collect();
-            let result = foundry.modify_document("Combatant", "create", json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                "parentUuid": format!("Combat.{combat_id}"), "data": data,
-            })).await?;
+            let result = foundry
+                .modify_document(
+                    "Combatant",
+                    "create",
+                    json!({
+                        "action": "create", "renderSheet": false, "keepId": false,
+                        "parentUuid": format!("Combat.{combat_id}"), "data": data,
+                    }),
+                )
+                .await?;
             Ok(text_response(&json!({
                 "combat": combat_id,
                 "added": tokens.iter().map(|t| t["name"].clone()).collect::<Vec<_>>(),
@@ -766,11 +796,9 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                 .get("initiative")
                 .and_then(Value::as_f64)
                 .ok_or_else(|| anyhow!("'initiative' is required"))?;
-            let empty = vec![];
-            let all = combat
-                .get("combatants")
-                .and_then(Value::as_array)
-                .unwrap_or(&empty);
+            // nom résolu depuis le jeton : un combattant créé depuis la scène
+            // n'a pas de `name` stocké (cf. status)
+            let all = with_names(state, &combat, sorted(&combat)).await?;
             let target = all
                 .iter()
                 .find(|c| c["_id"] == json!(who) || c["name"] == json!(who))
@@ -849,7 +877,7 @@ async fn manage_combat(state: &McpState, args: &Value) -> Result<Value> {
                     "Combat",
                     "delete",
                     json!({
-                        "action": "delete", "broadcast": false, "ids": [combat_id],
+                        "action": "delete", "ids": [combat_id],
                     }),
                 )
                 .await?;
@@ -949,27 +977,24 @@ async fn draw_from_table(state: &McpState, args: &Value) -> Result<Value> {
         .and_then(Value::as_u64)
         .unwrap_or(1)
         .clamp(1, 10);
-    let draws = super::roll_table_draws(&table, modifier, rolls_n as usize)?;
+    let mut draws = super::roll_table_draws(&table, modifier, rolls_n as usize)?;
+
+    // Tables liées (core Foundry, recursive) + quantités Mini Rolltable : un
+    // résultat qui pointe une RollTable du monde est re-tiré `quantity` fois
+    // dans cette table, jusqu'à MRT_MAX_DEPTH niveaux. Budget global : une
+    // chaîne de quantités élevées multiplierait les tirages à chaque niveau.
+    let mut budget: usize = 200;
+    let mut cache: std::collections::HashMap<String, Value> = Default::default();
+    for d in draws.iter_mut() {
+        expand_linked_draw(state, d, 1, &mut cache, &mut budget).await?;
+    }
+    let truncated = budget == 0;
 
     let mut posted = false;
     if args.get("post").and_then(Value::as_bool).unwrap_or(true) {
-        let body: Vec<String> = draws
-            .iter()
-            .map(|d| {
-                format!(
-                    "<p><strong>{}</strong>{} → {}</p>",
-                    d["roll"],
-                    if modifier != 0 {
-                        format!(" (dont {modifier:+})")
-                    } else {
-                        String::new()
-                    },
-                    d["text"].as_str().unwrap_or("<em>hors table</em>"),
-                )
-            })
-            .collect();
+        let body = crate::tools::cc_family::mini_suite::mrt_render_draws(&draws, modifier, true);
         let mut message = json!({
-            "content": format!("<h3>🎲 {}</h3>\n{}", table["name"].as_str().unwrap_or("Table"), body.join("\n")),
+            "content": format!("<h3>🎲 {}</h3>\n{}", table["name"].as_str().unwrap_or("Table"), body),
             "author": foundry.user_id().await,
             "flags": {"foundry-mcp": {"tableDraw": {"table": table["_id"], "draws": draws}}},
         });
@@ -983,15 +1008,73 @@ async fn draw_from_table(state: &McpState, args: &Value) -> Result<Value> {
                 "ChatMessage",
                 "create",
                 json!({
-                    "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+                    "action": "create", "renderSheet": false, "keepId": false,
                     "data": [message],
                 }),
             )
             .await?;
         posted = true;
     }
-    Ok(text_response(&json!({
+    let mut out = json!({
         "table": {"_id": table["_id"], "name": table["name"]},
         "modifier": modifier, "draws": draws, "posted": posted,
-    })))
+    });
+    if truncated {
+        out["truncated"] = json!("linked-table expansion stopped after 200 sub-draws");
+    }
+    Ok(text_response(&out))
+}
+
+/// Suit un résultat-table lié (draw_from_table) : tire `quantity` fois dans la
+/// table pointée et range les sous-tirages dans `subDraws`, récursivement.
+fn expand_linked_draw<'a>(
+    state: &'a McpState,
+    draw: &'a mut Value,
+    depth: usize,
+    cache: &'a mut std::collections::HashMap<String, Value>,
+    budget: &'a mut usize,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send + 'a>> {
+    use crate::tools::cc_family::mini_suite::MRT_MAX_DEPTH;
+    Box::pin(async move {
+        let Some(link) = draw.get("linkedTable").cloned() else {
+            return Ok(());
+        };
+        let Some(id) = link["_id"].as_str().map(String::from) else {
+            draw["linkedTable"]["note"] = json!("compendium table: not followed server-side");
+            return Ok(());
+        };
+        if depth > MRT_MAX_DEPTH {
+            draw["linkedTable"]["note"] =
+                json!(format!("max recursion depth {MRT_MAX_DEPTH} reached"));
+            return Ok(());
+        }
+        if !cache.contains_key(&id) {
+            match state.foundry.find_document("tables", &id, None).await? {
+                Some(t) => cache.insert(id.clone(), t),
+                None => {
+                    draw["linkedTable"]["note"] = json!("linked table not found");
+                    return Ok(());
+                }
+            };
+        }
+        let sub_table = &cache[&id];
+        draw["linkedTable"]["name"] = sub_table["name"].clone();
+        let qty = draw
+            .get("quantity")
+            .and_then(Value::as_i64)
+            .unwrap_or(1)
+            .max(0) as usize;
+        let n = qty.min(*budget);
+        *budget -= n;
+        let mut subs = if n == 0 {
+            vec![]
+        } else {
+            super::roll_table_draws(sub_table, 0, n)?
+        };
+        for s in subs.iter_mut() {
+            expand_linked_draw(state, s, depth + 1, cache, budget).await?;
+        }
+        draw["subDraws"] = json!(subs);
+        Ok(())
+    })
 }

@@ -226,7 +226,7 @@ pub(super) async fn run_tool(state: &McpState, name: &str, args: &Value) -> Resu
         }
         "create_document" | "modify_document" | "delete_document" => {
             let doc_type = str_arg(args, "type").ok_or_else(|| anyhow!("'type' is required"))?;
-            let mut op = json!({ "broadcast": false });
+            let mut op = json!({});
             if let Some(p) = str_arg(args, "parent_uuid") {
                 op["parentUuid"] = json!(p);
             }

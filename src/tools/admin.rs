@@ -136,8 +136,21 @@ fn base_url(state: &McpState) -> String {
     format!("{http_s}://{host}{base}")
 }
 
-fn http() -> Result<reqwest::Client> {
+/// Client HTTP des routes admin. Foundry v14 (build 368+) répond un 400
+/// générique à tout POST /join ou /setup sans en-tête `Origin` : on l'envoie
+/// par défaut, dérivé de l'URL de base.
+fn http(url: &str) -> Result<reqwest::Client> {
+    let origin = reqwest::Url::parse(url)
+        .context("URL Foundry invalide")?
+        .origin()
+        .ascii_serialization();
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        reqwest::header::ORIGIN,
+        reqwest::header::HeaderValue::from_str(&origin).context("en-tête Origin")?,
+    );
     reqwest::Client::builder()
+        .default_headers(headers)
         .cookie_store(true)
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()
@@ -177,19 +190,25 @@ async fn admin_auth(http: &reqwest::Client, url: &str, password: &str) -> Result
 }
 
 async fn setup_post(http: &reqwest::Client, url: &str, body: &Value) -> Result<Value> {
+    view_post(http, url, "setup", body).await
+}
+
+/// POST JSON sur une vue Foundry (`/setup`, `/create`…) ; une réponse
+/// `{error}` ou un statut non-2xx devient une erreur.
+async fn view_post(http: &reqwest::Client, url: &str, view: &str, body: &Value) -> Result<Value> {
     let resp = http
-        .post(format!("{url}/setup"))
+        .post(format!("{url}/{view}"))
         .json(body)
         .send()
         .await
-        .context("POST /setup")?;
+        .with_context(|| format!("POST /{view}"))?;
     let status = resp.status();
     let data: Value = resp.json().await.unwrap_or(Value::Null);
     if let Some(err) = data.get("error").and_then(Value::as_str) {
-        bail!("setup a répondu une erreur : {err}");
+        bail!("{view} a répondu une erreur : {err}");
     }
     if !status.is_success() {
-        bail!("POST /setup {} → HTTP {status} : {data}", body["action"]);
+        bail!("POST /{view} {} → HTTP {status} : {data}", body["action"]);
     }
     Ok(data)
 }
@@ -282,13 +301,18 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 };
                 payload.insert(field.into(), v);
             }
+            // v14 vérifie aussi le mot de passe admin sur /setup et répond 401
+            // (modification pourtant appliquée) quand il manque : on le joint.
+            if let Ok(pw) = admin_password(state) {
+                payload.insert("adminPassword".into(), json!(pw));
+            }
             // session de jeu du bot (même canal que l'écran MJ « Edit World »)
             let session = state
                 .foundry
                 .session_id()
                 .await
                 .ok_or_else(|| anyhow!("session Foundry indisponible (bot déconnecté ?)"))?;
-            let resp = reqwest::Client::new()
+            let resp = http(&url)?
                 .post(format!("{url}/setup"))
                 .header(reqwest::header::COOKIE, format!("session={session}"))
                 .json(&Value::Object(payload.clone()))
@@ -320,7 +344,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(active) = status.get("world").and_then(Value::as_str) {
                 bail!("le monde '{active}' tourne — la création exige le mode setup");
             }
-            let client = http()?;
+            let client = http(&url)?;
             admin_auth(&client, &url, password).await?;
             let mut body = json!({
                 "action": "createWorld",
@@ -331,7 +355,11 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(bg) = str_arg(args, "background") {
                 body["background"] = json!(bg);
             }
-            let data = setup_post(&client, &url, &body).await?;
+            // v14 a déplacé createWorld vers la vue /create ; v13 le prend sur /setup
+            let data = match view_post(&client, &url, "create", &body).await {
+                Ok(d) => d,
+                Err(_) => setup_post(&client, &url, &body).await?,
+            };
             Ok(text_response(&json!({
                 "created": id, "title": title, "system": system,
                 "note": "monde vide créé — le lancer avec admin_launch_world, ou y verser du contenu avec copy_documents / copy_assets",
@@ -364,7 +392,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     "reason": "déjà installé — utiliser admin_update_package pour le mettre à jour",
                 })));
             }
-            let client = http()?;
+            let client = http(&url)?;
             admin_auth(&client, &url, password).await?;
             setup_post(
                 &client,
@@ -400,7 +428,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
             if let Some(active) = status.get("world").and_then(Value::as_str) {
                 bail!("le monde '{active}' tourne — les sauvegardes exigent le mode setup");
             }
-            let client = http()?;
+            let client = http(&url)?;
             admin_auth(&client, &url, password).await?;
             let data = setup_post(&client, &url, &json!({ "action": "listBackups" })).await?;
             Ok(text_response(&data))
@@ -426,7 +454,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                      (admin_shutdown_world d'abord)"
                 );
             }
-            let client = http()?;
+            let client = http(&url)?;
             admin_auth(&client, &url, password).await?;
             let backup = run_backup(&client, &url, &pkg_type, &id, &note).await?;
             Ok(text_response(&backup))
@@ -443,18 +471,48 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                 bail!("aucun monde actif — rien à éteindre");
             };
             *state.last_world_id.lock().await = Some(world.to_string());
-            let client = http()?;
+            let client = http(&url)?;
             let _ = client.get(format!("{url}/join")).send().await; // session
-            let resp = client
-                .post(format!("{url}/join"))
-                .json(&json!({ "action": "shutdown", "adminPassword": password }))
-                .send()
-                .await
-                .context("POST /join shutdown")?;
-            let code = resp.status();
-            let data: Value = resp.json().await.unwrap_or(Value::Null);
-            if !code.is_success() {
-                bail!("shutdown refusé (HTTP {code}) : {data}");
+            // v14 : POST /setup {action: worldShutdown} (répond par une redirection) ;
+            // v13 : POST /join {action: shutdown}. On tente v14 puis v13, et on
+            // vérifie sur /api/status — les deux répondent 2xx même sans effet.
+            let attempts = [
+                (
+                    "setup",
+                    json!({ "action": "worldShutdown", "adminPassword": password }),
+                ),
+                (
+                    "join",
+                    json!({ "action": "shutdown", "adminPassword": password }),
+                ),
+            ];
+            let mut data = Value::Null;
+            let mut last = String::new();
+            for (view, body) in attempts {
+                let resp = client
+                    .post(format!("{url}/{view}"))
+                    .json(&body)
+                    .send()
+                    .await
+                    .with_context(|| format!("POST /{view} shutdown"))?;
+                let code = resp.status();
+                let text = resp.text().await.unwrap_or_default();
+                data = serde_json::from_str(&text).unwrap_or(Value::Null);
+                last = format!(
+                    "/{view} → HTTP {code} : {}",
+                    text.chars().take(200).collect::<String>()
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                let after = api_status(&url).await?;
+                if after.get("world").and_then(Value::as_str).is_none() {
+                    break;
+                }
+            }
+            let after = api_status(&url).await?;
+            if let Some(w) = after.get("world").and_then(Value::as_str) {
+                bail!(
+                    "shutdown sans effet — le monde '{w}' tourne toujours ({last}) ; mot de passe admin correct ?"
+                );
             }
             Ok(text_response(&json!({
                 "shutdown": world,
@@ -478,7 +536,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                     "le monde '{active}' tourne déjà — l'éteindre d'abord (admin_shutdown_world)"
                 );
             }
-            let client = http()?;
+            let client = http(&url)?;
             admin_auth(&client, &url, password).await?;
             let data = setup_post(
                 &client,
@@ -534,7 +592,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         let m: Value = reqwest::get(&mu).await?.json().await?;
                         m.get("version").and_then(Value::as_str).map(String::from)
                     } else {
-                        let client = http()?;
+                        let client = http(&url)?;
                         admin_auth(&client, &url, admin_password(state)?).await?;
                         let check = setup_post(&client, &url, &json!({
                         "action": "checkPackage", "strict": false, "type": pkg_type, "id": id,
@@ -561,7 +619,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                      (admin_shutdown_world d'abord)"
                 );
             }
-            let client = http()?;
+            let client = http(&url)?;
             admin_auth(&client, &url, admin_password(state)?).await?;
             let check = setup_post(
                 &client,

@@ -176,13 +176,45 @@ impl FoundryHandle {
         }
     }
 
+    /// Complète, côté serveur, ce que le navigateur ajoute d'ordinaire dans
+    /// `_preCreate` et que le serveur Foundry ne fait pas pour un client socket :
+    /// - Scene (v14+) : au moins un niveau, sinon le canevas plante à
+    ///   l'ouverture (`_determineInitialLevel`) ;
+    /// - ChatMessage : `author`, requis par le schéma.
+    async fn complete_create_data(&self, doc_type: &str, operation: &mut Value) {
+        let Some(items) = operation.get_mut("data").and_then(Value::as_array_mut) else {
+            return;
+        };
+        match doc_type {
+            "Scene" if self.generation().await.unwrap_or(0) >= 14 => {
+                for scene in items.iter_mut().filter_map(Value::as_object_mut) {
+                    add_default_level(scene);
+                }
+            }
+            "ChatMessage" => {
+                let Some(uid) = self.user_id().await else {
+                    return;
+                };
+                for msg in items.iter_mut().filter_map(Value::as_object_mut) {
+                    if msg.get("author").is_none_or(Value::is_null) {
+                        msg.insert("author".into(), json!(uid));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// « modifyDocument » — le canal universel (get/create/update/delete).
     pub async fn modify_document(
         &self,
         doc_type: &str,
         action: &str,
-        operation: Value,
+        mut operation: Value,
     ) -> Result<Value> {
+        if action == "create" {
+            self.complete_create_data(doc_type, &mut operation).await;
+        }
         let payload = json!({ "type": doc_type, "action": action, "operation": operation });
         let mut reply = self.emit_with_ack("modifyDocument", &[payload]).await?;
         let data = if reply.is_empty() {
@@ -360,6 +392,8 @@ impl FoundryHandle {
             .http
             .post(&url)
             .header(reqwest::header::COOKIE, format!("session={session}"))
+            // v14 (build 368+) exige Origin sur les POST de formulaire
+            .header(reqwest::header::ORIGIN, format!("{http_s}://{host}"))
             .multipart(form)
             .send()
             .await?;
@@ -586,4 +620,97 @@ async fn record_event(shared: &Arc<Shared>, event: String, mut args: Vec<Value>)
     }
     drop(buf);
     let _ = shared.event_tx.send(entry);
+}
+
+/// Équivalent de `Scene#_preCreate` (v14) : sans niveau fourni, crée le niveau
+/// par défaut à partir des anciens champs de fond (background, foreground…).
+fn add_default_level(scene: &mut serde_json::Map<String, Value>) {
+    if scene
+        .get("levels")
+        .and_then(Value::as_array)
+        .is_some_and(|l| !l.is_empty())
+    {
+        return;
+    }
+    const DEFAULT_LEVEL: &str = "defaultLevel0000";
+    let mut level = serde_json::Map::new();
+    level.insert("_id".into(), json!(DEFAULT_LEVEL));
+    level.insert(
+        "name".into(),
+        scene.get("name").cloned().unwrap_or(json!("Level")),
+    );
+    let background = scene.get("background").filter(|b| b.is_object()).cloned();
+    let color = scene
+        .get("backgroundColor")
+        .filter(|c| !c.is_null())
+        .cloned();
+    if background.is_some() || color.is_some() {
+        let mut bg = serde_json::Map::new();
+        if let Some(c) = color {
+            bg.insert("color".into(), c);
+        }
+        if let Some(b) = &background {
+            if let Some(src) = b.get("src") {
+                bg.insert("src".into(), src.clone());
+            }
+            for (from, to) in [("offsetX", "shiftX"), ("offsetY", "shiftY")] {
+                if let Some(v) = b.get(from)
+                    && !scene.contains_key(to)
+                {
+                    scene.insert(to.into(), v.clone());
+                }
+            }
+        }
+        level.insert("background".into(), Value::Object(bg));
+    }
+    if let Some(fg) = scene.get("foreground").filter(|f| !f.is_null()) {
+        level.insert("foreground".into(), json!({ "src": fg }));
+    }
+    if let Some(top) = scene.get("foregroundElevation").filter(|e| !e.is_null()) {
+        level.insert("elevation".into(), json!({ "top": top }));
+    }
+    if let Some(overlay) = scene
+        .get("fog")
+        .and_then(|f| f.get("overlay"))
+        .filter(|o| !o.is_null())
+    {
+        level.insert("fog".into(), json!({ "src": overlay }));
+    }
+    scene.insert("levels".into(), json!([level]));
+    scene.insert("initialLevel".into(), json!(DEFAULT_LEVEL));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::add_default_level;
+    use serde_json::{Value, json};
+
+    fn scene(v: Value) -> serde_json::Map<String, Value> {
+        v.as_object().cloned().unwrap()
+    }
+
+    #[test]
+    fn scene_v14_recoit_un_niveau_par_defaut() {
+        let mut s = scene(
+            json!({"name": "Cantina", "background": {"src": "maps/c.webp", "offsetX": 5},
+                                 "backgroundColor": "#112233", "foregroundElevation": 20}),
+        );
+        add_default_level(&mut s);
+        assert_eq!(s["initialLevel"], "defaultLevel0000");
+        let level = &s["levels"][0];
+        assert_eq!(level["_id"], "defaultLevel0000");
+        assert_eq!(level["name"], "Cantina");
+        assert_eq!(level["background"]["src"], "maps/c.webp");
+        assert_eq!(level["background"]["color"], "#112233");
+        assert_eq!(level["elevation"]["top"], 20);
+        assert_eq!(s["shiftX"], 5);
+    }
+
+    #[test]
+    fn scene_avec_niveaux_inchangee() {
+        let mut s = scene(json!({"name": "S", "levels": [{"_id": "abc"}]}));
+        add_default_level(&mut s);
+        assert_eq!(s["levels"], json!([{"_id": "abc"}]));
+        assert!(!s.contains_key("initialLevel"));
+    }
 }

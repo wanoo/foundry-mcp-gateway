@@ -45,14 +45,18 @@ what's at stake:
   it is still a bearer credential. It means the token travels in URLs and
   may land in proxy logs or browser history. **Always put HTTPS in front**, and
   treat the URL as a password.
-- **Anyone reaching that endpoint acts as a Gamemaster**: read and write every
-  document, run macros, and — with `FOUNDRY_ADMIN_PASSWORD` set — shut worlds
-  down, install packages, restore backups.
+- **Full-access tokens can exercise the bot's document rights and permitted
+  actions in the connected GM browser.** Companion code runs with that
+  browser's GM rights, subject to its script and macro settings. Setting
+  `FOUNDRY_ADMIN_PASSWORD` also enables server/package administration.
+  A read-only token is independently restricted at dispatch.
 - **`client_run_script` executes arbitrary JavaScript** in the GM's browser. It
   is off by default and must be enabled explicitly in the companion module's
   settings.
 - **`FOUNDRY_READONLY=1`** exists for untrusted or player-facing integrations:
-  it exposes only the 50 read-only tools and refuses writes at dispatch.
+  it exposes only read-only tools and refuses writes at dispatch. The 1.7
+  catalogue has 69 with administration enabled, or 67 without it, before
+  game-system filtering. Read-only access may still reveal GM-only content.
 
 Especially in scope for a report: credential leakage, authentication bypass on
 the HTTP transport, reaching tools without a valid token, escaping the read-only

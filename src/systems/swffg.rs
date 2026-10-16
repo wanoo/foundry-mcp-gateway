@@ -361,10 +361,16 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         })).await?;
                     }
                     None => {
-                        foundry.modify_document("Setting", "create", json!({
-                            "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
-                            "data": [{"key": key, "value": value.to_string()}],
-                        })).await?;
+                        foundry
+                            .modify_document(
+                                "Setting",
+                                "create",
+                                json!({
+                                    "action": "create", "renderSheet": false, "keepId": false,
+                                    "data": [{"key": key, "value": value.to_string()}],
+                                }),
+                            )
+                            .await?;
                     }
                 }
             }
@@ -484,7 +490,7 @@ pub async fn run(state: &McpState, name: &str, args: &Value) -> Result<Value> {
                         }
                         attached = json!({"name": injury["name"]});
                         foundry.modify_document("Item", "create", json!({
-                            "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+                            "action": "create", "renderSheet": false, "keepId": false,
                             "parentUuid": format!("Actor.{}", actor["_id"].as_str().unwrap_or("")),
                             "data": [injury],
                         })).await?;

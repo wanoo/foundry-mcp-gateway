@@ -97,7 +97,7 @@ pub async fn post_chat(
             "ChatMessage",
             "create",
             json!({
-                "action": "create", "broadcast": false, "renderSheet": false, "keepId": false,
+                "action": "create", "renderSheet": false, "keepId": false,
                 "data": [message],
             }),
         )
@@ -105,6 +105,10 @@ pub async fn post_chat(
 }
 
 /// Tirages sur une RollTable (formule NdM±k + modificateur, sélection par plage).
+///
+/// Chaque tirage porte aussi, si le résultat touché en a : `quantity` et
+/// `quantityFormula` (Mini Rolltable) et `linkedTable` (résultat qui pointe
+/// une autre RollTable). Sans ces données, la sortie est inchangée.
 pub fn roll_table_draws(table: &Value, modifier: i64, rolls: usize) -> Result<Vec<Value>> {
     let formula = table
         .get("formula")
@@ -151,13 +155,37 @@ pub fn roll_table_draws(table: &Value, modifier: i64, rolls: usize) -> Result<Ve
                 .map(|(lo, hi)| roll >= lo && roll <= hi)
                 .unwrap_or(false)
         });
-        draws.push(json!({
+        // v13+ : un résultat « document » a souvent une description VIDE et
+        // son libellé dans `name` — on prend le premier champ non vide.
+        let text = hit.and_then(|h| {
+            ["description", "text", "name"]
+                .iter()
+                .filter_map(|k| h.get(*k).and_then(Value::as_str))
+                .find(|t| !t.trim().is_empty())
+        });
+        let mut draw = json!({
             "roll": roll,
             "range": hit.and_then(|h| h.get("range")).cloned(),
-            "text": hit.and_then(|h| h.get("description").or(h.get("text")).or(h.get("name")))
-                .and_then(Value::as_str),
+            "text": text,
             "documentUuid": hit.and_then(|h| h.get("documentUuid")).cloned(),
-        }));
+        });
+        // Mini Rolltable : quantité par résultat (flags["mini-rolltable"].quantity)
+        // et lien vers une autre table (suivi par draw_from_table, qui charge
+        // la table liée — ici on reste pur, sans accès au monde).
+        if let Some(h) = hit {
+            if let Some(f) = cc_family::mini_suite::mrt_quantity_formula(h) {
+                let (q, warn) = cc_family::mini_suite::mrt_roll_quantity(&f, rand::random::<f64>);
+                draw["quantityFormula"] = json!(f);
+                draw["quantity"] = json!(q);
+                if let Some(w) = warn {
+                    draw["warning"] = json!(w);
+                }
+            }
+            if let Some((uuid, id)) = cc_family::mini_suite::mrt_linked_table(h) {
+                draw["linkedTable"] = json!({"uuid": uuid, "_id": id});
+            }
+        }
+        draws.push(draw);
     }
     Ok(draws)
 }
@@ -190,7 +218,8 @@ pub(super) fn truncate_by_bytes(mut docs: Vec<Value>, max_length: Option<usize>)
 /// Un outil sans effet de bord sur le monde (sert aux annotations ET au mode
 /// FOUNDRY_READONLY). ⚠️ manage_modules/manage_users ÉCRIVENT : jamais ici.
 pub fn is_read_only(name: &str) -> bool {
-    name.starts_with("get_")
+    cc_family::is_read_only(name)
+        || name.starts_with("get_")
         || name.starts_with("list_")
         || matches!(
             name,
@@ -218,11 +247,6 @@ pub fn is_read_only(name: &str) -> bool {
                 // le cas d'un nom qui survit à un outil renommé ou supprimé.
                 | "browse_files"
                 | "show_credentials"
-                | "cc_list_sheets"
-                | "cc_get_sheet"
-                | "al_find"
-                | "mc_get_time"
-                | "mc_list_notes"
                 | "mat_list"
         )
 }
@@ -701,5 +725,36 @@ mod tests {
         // Le modificateur décale le résultat dans les plages.
         let draws = roll_table_draws(&table("1d1"), 1, 1).unwrap();
         assert_eq!(draws[0]["text"], json!("deux"));
+    }
+
+    #[test]
+    fn tirage_sans_flags_inchange() {
+        // Une table sans Mini Rolltable ne gagne aucun champ.
+        let d = &roll_table_draws(&table("1d1"), 0, 1).unwrap()[0];
+        let keys: Vec<&String> = d.as_object().unwrap().keys().collect();
+        assert_eq!(keys.len(), 4, "champs inattendus : {keys:?}");
+    }
+
+    #[test]
+    fn tirage_quantite_et_table_liee() {
+        let t = json!({"formula": "1d1", "results": [{
+            "range": [1, 1], "type": "document", "name": "Butin", "description": "",
+            "documentUuid": "RollTable.sub",
+            "flags": {"mini-rolltable": {"quantity": "3"}},
+        }]});
+        let d = &roll_table_draws(&t, 0, 1).unwrap()[0];
+        assert_eq!(d["quantity"], json!(3));
+        assert_eq!(d["quantityFormula"], json!("3"));
+        assert_eq!(d["linkedTable"]["_id"], json!("sub"));
+        // description vide → le nom sert de texte
+        assert_eq!(d["text"], json!("Butin"));
+        // quantité fixe « 1 » = défaut du module : pas de champ
+        let t = json!({"formula": "1d1", "results": [{
+            "range": [1, 1], "text": "x", "flags": {"mini-rolltable": {"quantity": "1"}}}]});
+        assert!(
+            roll_table_draws(&t, 0, 1).unwrap()[0]
+                .get("quantity")
+                .is_none()
+        );
     }
 }
