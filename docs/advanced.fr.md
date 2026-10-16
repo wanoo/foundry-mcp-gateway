@@ -34,7 +34,7 @@ foundry-mcp --generate-key
 Conservez les valeurs privées dans `MCP_ROOT_PRIVATE_KEY` et
 `COMPANION_SIGNING_KEY`, puis exportez-les dans votre shell. Définissez
 `FOUNDRY_CREDENTIALS_JSON` comme dans le
-[guide d'installation](installation.fr.md#4-demarrer-le-gateway), avec
+[guide d'installation](installation.fr.md#4-démarrer-le-gateway), avec
 `http://localhost:30000` si le Gateway natif et Foundry partagent une machine.
 Créez un jeton avec `foundry-mcp --mint-token assistant --days 365`, puis lancez
 `foundry-mcp` (ou `./target/release/foundry-mcp` depuis le dépôt source).
@@ -152,8 +152,8 @@ les instances configurées avec les droits de leurs comptes bot.
 
 Un jeton de lecture seule filtre le catalogue et refuse les écritures même si
 le serveur les autorise normalement. `FOUNDRY_READONLY=1` applique cette restriction
-à tous les clients. Le catalogue 1.7 complet possède 69 outils de lecture seule
-avec l'administration activée, ou 67 sans elle, avant filtrage des systèmes.
+à tous les clients. Le catalogue 1.8 complet possède 76 outils de lecture seule
+avec l'administration activée, ou 74 sans elle, avant filtrage des systèmes.
 Un jeton de lecture seule ne peut pas installer la clé du Companion : utilisez
 d'abord un client d'accès complet ou collez la clé publique manuellement.
 La lecture seule peut quand même révéler des informations MJ de votre campagne.
@@ -209,6 +209,16 @@ contient du code passe par la même politique et le même dialogue de
 confirmation que `client_run_script`.
 
 ## Mises à jour
+
+### De la 1.7 à la 1.8
+
+Mettez les deux composants en 1.8.x et rechargez les navigateurs MJ. Clés et
+jetons ne changent pas. Deux comportements se durcissent : la Gateway ne peut
+plus modifier les réglages du Companion (réglez vous-même les politiques de
+script dans Foundry), et les écritures ou déclenchements de tuiles porteurs de
+code sont refusés tant que le réglage correspondant du Companion n'est pas sur
+**Automatique** — voir [du code caché dans les données](#du-code-caché-dans-les-données).
+Item Piles a besoin de son module d'intégration système (`ip_status` le nomme).
 
 ### De la 1.6 à la 1.7
 

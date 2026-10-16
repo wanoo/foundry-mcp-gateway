@@ -61,8 +61,8 @@ what's at stake:
   settings, and the companion reverts changes made by clients that do not run
   it. A bypass of this guard is in scope for a report.
 - **`FOUNDRY_READONLY=1`** exists for untrusted or player-facing integrations:
-  it exposes only read-only tools and refuses writes at dispatch. The 1.7
-  catalogue has 69 with administration enabled, or 67 without it, before
+  it exposes only read-only tools and refuses writes at dispatch. The 1.8
+  catalogue has 76 with administration enabled, or 74 without it, before
   game-system filtering. Read-only access may still reveal GM-only content.
 
 Especially in scope for a report: credential leakage, authentication bypass on

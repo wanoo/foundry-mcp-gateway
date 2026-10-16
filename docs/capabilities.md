@@ -2,9 +2,9 @@
 
 [Français](capabilities.fr.md) · [Home](../README.md) · [Installation](installation.md) · [Advanced guide](advanced.md)
 
-The 1.7 catalogue contains **166 tools**: 158 without an admin password, plus
+The 1.8 catalogue contains **184 tools**: 176 without an admin password, plus
 8 administration tools unlocked by `FOUNDRY_ADMIN_PASSWORD`. There are
-69 read-only tools and 46 companion tools (included in the total).
+76 read-only tools and 56 companion tools (included in the total).
 A read-only token or `FOUNDRY_READONLY=1` reduces the exposed catalogue;
 `FOUNDRY_SYSTEMS` can narrow it further.
 
@@ -103,6 +103,29 @@ All modules load by default; restrict with `FOUNDRY_SYSTEMS=starwarsffg,dnd5e`.
 | **Mini Light Switch** | `ls_lights` / `ls_toggle` | List a scene's lights, switch them on/off by id or Tagger tag, set the animated graphic — works even without the module |
 | **Mini Player** | `mp_list_presets` `mp_scene_audio` · companion: `client_mp_play_preset` `client_mp_play_tags` | Start a saved ambience or music by tags; set the audio a scene plays when activated |
 | **Mini Rolltable** | `draw_from_table` | Quantities (`1d4+1` goblins) and linked tables are honoured, up to 5 levels deep |
+
+## 🧰 Scene & loot prep — traps, chests and prefabs
+
+Monk's Active Tiles tools write documents directly (no Companion needed to build
+tiles); Item Piles and Mass Edit act through their own APIs in the GM browser.
+Content that would run code — `runcode`, evaluated values, region scripts,
+preset spawn scripts, pile macros — is refused unless the GM allowed remote
+scripts in the Companion ([why](advanced.md#code-hidden-in-data)).
+
+| Addon | Tools | What for |
+|---|---|---|
+| **[Monk's Active Tiles](https://foundryvtt.com/packages/monks-active-tiles)** | `mat_create_tile` | Create a trigger tile (trap, switch, button): position in pixels or grid squares, hidden by default, validated triggers and actions, optional v14 Region |
+| | `mat_update_tile` | Change an active tile: fields, replace/append/remove actions, reset its trigger history, disable it |
+| | `mat_get_tile` · `mat_action_types` | Read a tile's full configuration (triggers, conditions, actions, per-token history) · catalogue of triggers and safe actions with their data fields, and what the guard refuses |
+| **[Item Piles](https://foundryvtt.com/packages/item-piles)** | `ip_status` | Active and configured for this system? Currencies, quantity/price paths, integration module — and what to install otherwise (Item Piles 3 needs one per system) |
+| | `ip_list_piles` / `ip_get_pile` | List piles (world actors, scene tokens) and read one server-side: effective settings, items with quantity/price, currencies |
+| | `client_ip_create_pile` | Create a pile, chest, merchant or vault (dedicated actor + token) with items from compendiums and currencies; survives being emptied |
+| | `client_ip_add_items` / `client_ip_remove_items` | Add or remove items and currencies on a pile |
+| | `client_ip_configure_pile` | Closed/locked, sharing, merchant buy/sell and per-actor modifiers, population tables; pile macros refused |
+| | `client_ip_turn_into_pile` / `client_ip_revert_pile` · `client_ip_restock` | Turn tokens into lootable piles and back · refresh a merchant from its tables, or roll a table into any pile |
+| **[Mass Edit](https://foundryvtt.com/packages/multi-token-edit)** | `me_list_presets` · `client_me_find_presets` | List presets server-side from each preset compendium's index · search like the Preset Browser (query syntax, or name/tags/types), flagging presets with spawn scripts or active tiles |
+| | `client_me_spawn_preset` | Place a preset at x,y on the scene the GM is viewing (pivot, hidden, snap/scale to grid) |
+| | `client_me_create_preset` | Save placeables of the viewed scene as a preset (attached placeables, tags, thumbnail); creates the default preset pack if needed |
 
 ## 🛠️ Administration — the world itself
 

@@ -7,6 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Response shapes** — the contract documented in
 [docs/integrators.md](docs/integrators.md) — only change on a **major** version.
 
+## [1.8.0] — 2026-10-16
+
+*Scene and loot prep — traps, switches, chests, merchants and prefabs — and the
+closing of a class of holes the new tools made obvious: code that hides in
+ordinary documents. 184 tools; tested on a live Foundry 14.369 world.*
+
+### Security
+
+- **The gateway can no longer authorise itself.** `set_setting` could flip the
+  companion's « Remote script execution » setting to « auto », after which
+  `client_run_script` ran without confirmation. Companion settings other than
+  the trust key are now refused by the gateway, and the companion reverts any
+  change to its script settings made by a client that does not run it.
+- **Code hidden in data is refused.** The gateway is a GM account, so Foundry
+  accepted writes that later run JavaScript in the GM's browser: Monk's Active
+  Tiles actions (`runcode`, and `eval()` on value fields, positions and
+  comparisons, plus Handlebars with prototype access on texts), core Region
+  behaviors `executeScript`/`executeMacro`, Mass Edit preset spawn scripts and
+  Item Piles pile macros. Every write now goes through one inspection — nested
+  flags, flattened keys, scenes embedding tiles or regions — and such content
+  passes only if the GM set the matching companion setting to « auto ». Safe
+  Monk's Active Tiles actions (a known list, with numbers, dice, `+ 3`/`= 5`
+  operations or identifiers as values) are still accepted.
+- Triggering an existing active tile (`client_mat_trigger`) that contains code
+  now goes through the same companion policy and dialog as `client_run_script`.
+
+### Added
+
+- **Monk's Active Tiles from the server** (`mat_create_tile`,
+  `mat_update_tile`, `mat_get_tile`, `mat_action_types`). Traps, light
+  switches and buttons are written as documents, without the companion:
+  position in pixels or grid squares, hidden by default, validated triggers,
+  generated action ids, optional v14 Region forwarding to the tile. The action
+  catalogue gives the AI each safe action's fields, and a refusal names the
+  action and field at fault and how to write it instead.
+- **Item Piles** (`ip_status`, `ip_list_piles`, `ip_get_pile`,
+  `client_ip_create_pile`, `client_ip_add_items`, `client_ip_remove_items`,
+  `client_ip_configure_pile`, `client_ip_turn_into_pile`,
+  `client_ip_revert_pile`, `client_ip_restock`). Reads are server-side, so
+  piles can be audited without a browser; writes go through Item Piles' own
+  API so stacking, system item transformers and hooks behave as in the UI.
+  Piles get their own actor with `deleteWhenEmpty` off — Item Piles' shared
+  « Default Item Pile » deletes a looted token, which is wrong for prepared
+  scenes.
+- **`ip_status` explains why Item Piles may do nothing**: since 3.x it supports
+  no game system on its own. dnd5e needs `itempilesdnd5e`, Star Wars FFG
+  `itempilesstarwarsffg`; every `client_ip_*` tool refuses with that diagnosis
+  instead of failing silently.
+- **Mass Edit presets** (`me_list_presets`, `client_me_find_presets`,
+  `client_me_spawn_preset`, `client_me_create_preset`). Prefabs are found
+  with the module's query syntax, placed on the scene the GM is viewing and
+  saved from placeables. Creation goes through the companion because Mass Edit
+  updates its preset index only on the client that writes. Presets carrying
+  code are placed only under the companion's script policy, and placeables
+  that run code cannot be saved as a preset.
+
+### Fixed
+
+- Item Piles API calls that report failure by returning `false` become
+  explicit errors, and unknown currency abbreviations are rejected instead of
+  being silently dropped.
+
+### Known limits
+
+- Monk's Active Tiles movement triggers and its Region behavior only react to
+  moves made in a browser: a `move_token` from the gateway triggers nothing,
+  so use `client_mat_trigger`. The damage/heal action targets the system's
+  primary hit points (wrong for Star Wars FFG — use `alter` on wounds).
+- Mass Edit places presets only on the scene the GM is viewing (it snaps
+  against the displayed canvas).
+
 ## [1.7.0] — 2026-10-16
 
 *The wgtnGM suite moved a lot, and so did Foundry. This release catches up with

@@ -143,8 +143,8 @@ the configured instances with the bot accounts' rights.
 
 A read-only token filters the catalogue and refuses write calls even if the
 server normally permits them. `FOUNDRY_READONLY=1` applies that restriction to
-all clients. The full 1.7 catalogue has 69 read-only tools with administration
-enabled, or 67 without it, before any system filtering. A read-only token cannot
+all clients. The full 1.8 catalogue has 76 read-only tools with administration
+enabled, or 74 without it, before any system filtering. A read-only token cannot
 install the Companion trust key; use a full-access client or paste the public key
 manually first. Read-only access can still reveal your campaign's GM information.
 
@@ -194,6 +194,15 @@ contains code goes through the same Companion policy and confirmation dialog
 as `client_run_script`.
 
 ## Upgrading
+
+### From 1.7 to 1.8
+
+Update both components to 1.8.x and reload GM browsers. Keys and tokens are
+unchanged. Two behaviours tighten: the Gateway can no longer change the
+Companion's settings (set script policies in Foundry yourself), and writes or
+tile triggers carrying code are refused unless the matching Companion setting
+is **Automatic** — see [code hidden in data](#code-hidden-in-data). Item Piles
+needs its system integration module (`ip_status` names it).
 
 ### From 1.6 to 1.7
 

@@ -1,8 +1,8 @@
 [package]
 name = "foundry-mcp-gateway"
-version = "1.7.0"
+version = "1.8.0"
 edition = "2024"
-description = "MCP server for Foundry VTT: a native socket client exposing 166 tools over streamable HTTP, with pluggable game-system modules."
+description = "MCP server for Foundry VTT: a native socket client exposing 184 tools over streamable HTTP, with pluggable game-system modules."
 license = "MIT"
 repository = "https://github.com/wanoo/foundry-mcp-gateway"
 homepage = "https://github.com/wanoo/foundry-mcp-gateway"

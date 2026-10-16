@@ -168,7 +168,7 @@ jobs:
           username: wanoo
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ env.IMAGE }}
-          short-description: "MCP server for Foundry VTT — 166 tools, single Rust binary"
+          short-description: "MCP server for Foundry VTT — 184 tools, single Rust binary"
 
   # ─── Release GitHub : notes issues du CHANGELOG + binaires ───────────────
   release:
