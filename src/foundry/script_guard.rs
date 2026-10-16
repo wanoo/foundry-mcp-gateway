@@ -97,7 +97,7 @@ static HTML_ACTIVE: LazyLock<Regex> = LazyLock::new(|| {
 fn check_mat_string(key: &str, s: &str) -> Result<(), String> {
     if s.contains("{{") {
         return Err(format!(
-            "« {key} » contient un modèle Handlebars ({{{{…}}}})"
+            "« {key} » contains a Handlebars template ({{{{…}}}})"
         ));
     }
     if MAT_TEXT_FIELDS.contains(&key) {
@@ -105,11 +105,11 @@ fn check_mat_string(key: &str, s: &str) -> Result<(), String> {
         let t = s.trim_start();
         if t.starts_with('=') || t.starts_with("+ ") || t.starts_with("- ") {
             return Err(format!(
-                "« {key} » commence par un opérateur, que MAT évalue en JavaScript"
+                "« {key} » starts with an operator, which MAT evaluates as JavaScript"
             ));
         }
         if HTML_ACTIVE.is_match(s) {
-            return Err(format!("« {key} » contient du HTML actif"));
+            return Err(format!("« {key} » contains active HTML"));
         }
         return Ok(());
     }
@@ -117,7 +117,7 @@ fn check_mat_string(key: &str, s: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "« {key} » = {s:?} n'est ni un nombre, ni un dé, ni un identifiant — MAT l'évaluerait en JavaScript"
+            "« {key} » = {s:?} is not a number, a die roll or an identifier — MAT would evaluate it as JavaScript"
         ))
     }
 }
@@ -138,7 +138,7 @@ fn walk_mat_data(key: &str, v: &Value, out: &mut Vec<String>) {
 /// Valide une liste d'actions MAT. Renvoie ce qu'il faut pour l'accepter.
 pub fn check_mat_actions(actions: &Value) -> Option<Need> {
     let Some(list) = actions.as_array() else {
-        return Some(Need::Script("liste d'actions MAT illisible".into()));
+        return Some(Need::Script("unreadable MAT action list".into()));
     };
     let mut problems = Vec::new();
     let mut macro_needed = false;
@@ -150,7 +150,7 @@ pub fn check_mat_actions(actions: &Value) -> Option<Need> {
         }
         if !MAT_SAFE_ACTIONS.contains(&kind) {
             problems.push(format!(
-                "action #{i} « {kind} » exécute du code ou n'est pas reconnue"
+                "action #{i} « {kind} » runs code or is not a known safe action"
             ));
             continue;
         }
@@ -170,7 +170,7 @@ pub fn check_mat_actions(actions: &Value) -> Option<Need> {
         )))
     } else if macro_needed {
         Some(Need::MacroScript(
-            "Monk's Active Tiles — action « runmacro »".into(),
+            "Monk's Active Tiles — « runmacro » action".into(),
         ))
     } else {
         None
@@ -199,14 +199,14 @@ fn walk(key: &str, v: &Value, out: &mut Vec<Need>) {
     } else if key.contains("monks-active-tiles.actions") {
         // Écriture d'un morceau d'action par chemin : impossible à valider seul.
         out.push(Need::Script(format!(
-            "écriture partielle d'actions MAT ({key})"
+            "partial write of MAT actions ({key}) — write the whole actions list"
         )));
     }
 
     // Mass Edit — scripts de preset.
     if key.contains("multi-token-edit") && (key.ends_with("SpawnScript")) && non_empty_str(Some(v))
     {
-        out.push(Need::Script("Mass Edit — script de preset".into()));
+        out.push(Need::Script("Mass Edit — preset spawn script".into()));
     }
     if key == "preset" || key.ends_with(".preset") {
         for s in ["preSpawnScript", "postSpawnScript"] {
@@ -220,12 +220,12 @@ fn walk(key: &str, v: &Value, out: &mut Vec<Need>) {
     if (key == "item-piles" || key.contains("item-piles")) && v.is_object() {
         for sub in ["data", "item"] {
             if non_empty_str(v.get(sub).and_then(|d| d.get("macro"))) {
-                out.push(Need::MacroScript("Item Piles — macro de pile".into()));
+                out.push(Need::MacroScript("Item Piles — pile macro".into()));
             }
         }
     }
     if key.contains("item-piles") && key.ends_with(".macro") && non_empty_str(Some(v)) {
-        out.push(Need::MacroScript("Item Piles — macro de pile".into()));
+        out.push(Need::MacroScript("Item Piles — pile macro".into()));
     }
 
     // Region behaviors du cœur (incrustés dans une Scene ou une Region).
@@ -233,12 +233,10 @@ fn walk(key: &str, v: &Value, out: &mut Vec<Need>) {
         && v.get("system").is_some()
     {
         match t {
-            "executeScript" => out.push(Need::Script(
-                "comportement de Region « executeScript »".into(),
-            )),
-            "executeMacro" => out.push(Need::MacroScript(
-                "comportement de Region « executeMacro »".into(),
-            )),
+            "executeScript" => out.push(Need::Script("« executeScript » Region behavior".into())),
+            "executeMacro" => {
+                out.push(Need::MacroScript("« executeMacro » Region behavior".into()))
+            }
             _ => {}
         }
     }
@@ -284,7 +282,7 @@ pub fn inspect(
                 && rest != "rootPublicKey"
             {
                 out.push(Need::Forbidden(format!(
-                    "le réglage « {k} » du compagnon ne se modifie que dans Foundry, par le MJ"
+                    "the companion setting « {k} » can only be changed in Foundry, by the GM"
                 )));
             }
         }
@@ -293,12 +291,12 @@ pub fn inspect(
     if doc_type == "RegionBehavior" {
         for d in &items {
             match d.get("type").and_then(Value::as_str) {
-                Some("executeScript") => out.push(Need::Script(
-                    "comportement de Region « executeScript »".into(),
-                )),
-                Some("executeMacro") => out.push(Need::MacroScript(
-                    "comportement de Region « executeMacro »".into(),
-                )),
+                Some("executeScript") => {
+                    out.push(Need::Script("« executeScript » Region behavior".into()))
+                }
+                Some("executeMacro") => {
+                    out.push(Need::MacroScript("« executeMacro » Region behavior".into()))
+                }
                 _ => {}
             }
         }
