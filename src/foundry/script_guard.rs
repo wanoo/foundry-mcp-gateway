@@ -193,14 +193,18 @@ fn walk(key: &str, v: &Value, out: &mut Vec<Need>) {
             out.push(n);
         }
     } else if key.ends_with("monks-active-tiles.actions") {
+        // La liste entière, par clé aplatie : validée ici, et on ne redescend
+        // PAS dedans — chaque action y repasserait sous la même clé.
         if let Some(n) = check_mat_actions(v) {
             out.push(n);
         }
+        return;
     } else if key.contains("monks-active-tiles.actions") {
         // Écriture d'un morceau d'action par chemin : impossible à valider seul.
         out.push(Need::Script(format!(
             "partial write of MAT actions ({key}) — write the whole actions list"
         )));
+        return;
     }
 
     // Mass Edit — scripts de preset.
@@ -390,6 +394,11 @@ mod tests {
         assert!(!inspect("Tile", "update", &op, &[]).is_empty());
         let op = json!({"action":"update","updates":[{"_id":"t","flags.monks-active-tiles.actions.0.data.value":"1"}]});
         assert!(!inspect("Tile", "update", &op, &[]).is_empty());
+        // La liste entière par clé aplatie : validée, acceptée si sûre.
+        let op = json!({"action":"update","updates":[{"_id":"t","flags.monks-active-tiles.actions":[
+            {"id":"a","action":"pause","data":{"pause":"pause"}},
+            {"id":"b","action":"notification","data":{"text":"Clic !","showto":"everyone"}}]}]});
+        assert!(inspect("Tile", "update", &op, &[]).is_empty());
         // Activer/désactiver une tuile ne touche pas aux actions : libre.
         let op = json!({"action":"update","updates":[{"_id":"t","flags.monks-active-tiles.active":false}]});
         assert!(inspect("Tile", "update", &op, &[]).is_empty());
