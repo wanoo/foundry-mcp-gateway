@@ -261,7 +261,7 @@ pub fn handles(name: &str) -> bool {
 
 /// Valeur d'un réglage monde, décodée du JSON où Foundry la stocke. `None`
 /// si le réglage n'a jamais été écrit (le module utilise alors son défaut).
-pub(super) async fn read_setting(foundry: &FoundryHandle, key: &str) -> Result<Option<Value>> {
+pub(crate) async fn read_setting(foundry: &FoundryHandle, key: &str) -> Result<Option<Value>> {
     let w = json!({"key": key}).as_object().cloned().unwrap();
     let docs = foundry
         .get_documents("settings", Some(&w), None, 0, Some(1))
@@ -273,7 +273,7 @@ pub(super) async fn read_setting(foundry: &FoundryHandle, key: &str) -> Result<O
 }
 
 /// Écrit un réglage monde (update ou create), sérialisé comme Foundry.
-pub(super) async fn write_setting(
+pub(crate) async fn write_setting(
     foundry: &FoundryHandle,
     key: &str,
     value: &Value,
@@ -318,7 +318,7 @@ pub(super) async fn write_setting(
 }
 
 /// Erreur explicite si le module n'est pas activé dans le monde.
-pub(super) async fn ensure_module_active(
+pub(crate) async fn ensure_module_active(
     foundry: &FoundryHandle,
     id: &str,
     label: &str,

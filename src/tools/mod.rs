@@ -10,6 +10,7 @@ pub mod generic;
 pub mod insight;
 pub mod manage;
 pub mod markdown;
+pub mod prep_family;
 pub mod session;
 pub mod table;
 pub mod transfer;
@@ -219,6 +220,7 @@ pub(super) fn truncate_by_bytes(mut docs: Vec<Value>, max_length: Option<usize>)
 /// FOUNDRY_READONLY). ⚠️ manage_modules/manage_users ÉCRIVENT : jamais ici.
 pub fn is_read_only(name: &str) -> bool {
     cc_family::is_read_only(name)
+        || prep_family::is_read_only(name)
         || name.starts_with("get_")
         || name.starts_with("list_")
         || matches!(
@@ -395,6 +397,7 @@ pub fn definitions(state: &McpState) -> Vec<Value> {
         .iter()
         .chain(manage::definitions())
         .chain(cc_family::definitions())
+        .chain(prep_family::definitions())
         .chain(addons::definitions())
         .chain(insight::definitions())
         .chain(table::definitions())
@@ -476,6 +479,8 @@ pub async fn dispatch(state: &McpState, name: &str, args: &Value) -> Result<Valu
         manage::run(state, name, args).await
     } else if cc_family::handles(name) {
         cc_family::run(state, name, args).await
+    } else if prep_family::handles(name) {
+        prep_family::run(state, name, args).await
     } else if addons::handles(name) {
         addons::run(state, name, args).await
     } else if transfer::handles(name) {
@@ -524,6 +529,7 @@ mod tests {
             ("session", session::handles),
             ("manage", manage::handles),
             ("cc_family", cc_family::handles),
+            ("prep_family", prep_family::handles),
             ("addons", addons::handles),
             ("insight", insight::handles),
             ("table", table::handles),

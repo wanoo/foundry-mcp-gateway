@@ -41,6 +41,7 @@ pub static COMPANION_COMMANDS: std::sync::LazyLock<Vec<(&str, &str, Delivery)>> 
         CORE_COMMANDS
             .iter()
             .chain(super::cc_family::commands())
+            .chain(super::prep_family::commands())
             .copied()
             .collect()
     });
@@ -425,6 +426,7 @@ mod tests {
             crate::tools::table::definitions(),
             crate::tools::insight::definitions(),
             crate::tools::cc_family::definitions(),
+            crate::tools::prep_family::definitions(),
             crate::tools::addons::definitions(),
         ] {
             for (n, _, _) in defs {
