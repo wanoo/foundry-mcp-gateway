@@ -2,6 +2,7 @@ pub mod auth;
 pub mod client;
 pub mod documents;
 pub mod protocol;
+pub mod script_guard;
 pub mod signing;
 
 use serde_json::Value;

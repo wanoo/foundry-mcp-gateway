@@ -206,7 +206,78 @@ impl FoundryHandle {
     }
 
     /// « modifyDocument » — le canal universel (get/create/update/delete).
+    /// Toute écriture passe par ici : le garde-fou de script_guard d'abord.
     pub async fn modify_document(
+        &self,
+        doc_type: &str,
+        action: &str,
+        operation: Value,
+    ) -> Result<Value> {
+        self.guard_scripts(doc_type, action, &operation).await?;
+        self.modify_document_raw(doc_type, action, operation).await
+    }
+
+    /// Refuse les écritures qui feraient exécuter du code au navigateur MJ en
+    /// contournant les réglages du compagnon (voir script_guard).
+    async fn guard_scripts(&self, doc_type: &str, action: &str, operation: &Value) -> Result<()> {
+        use super::script_guard::{self, COMPANION, Need};
+        if action != "create" && action != "update" {
+            return Ok(());
+        }
+        let mut keys = Vec::new();
+        if doc_type == "Setting" && action == "update" {
+            for u in operation
+                .get("updates")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                if let Some(id) = u.get("_id").and_then(Value::as_str) {
+                    let q = json!({ "_id": id })
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default();
+                    for d in self.get_collection_raw("Setting", q, false, None).await? {
+                        if let Some(k) = d.get("key").and_then(Value::as_str) {
+                            keys.push(k.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        let needs = script_guard::inspect(doc_type, action, operation, &keys);
+        if needs.is_empty() {
+            return Ok(());
+        }
+        let mode = async |name: &str, default: &str| -> String {
+            let q = json!({ "key": format!("{COMPANION}.{name}") })
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
+            self.get_collection_raw("Setting", q, false, None)
+                .await
+                .ok()
+                .and_then(|v| v.first()?.get("value")?.as_str().map(String::from))
+                .and_then(|raw| serde_json::from_str::<String>(&raw).ok())
+                .unwrap_or_else(|| default.to_string())
+        };
+        let script = mode("runScriptMode", "off").await;
+        let macro_mode = mode("runMacroScriptMode", "confirm").await;
+        for n in &needs {
+            let ok = match n {
+                Need::Forbidden(_) => false,
+                Need::Script(_) => script == "auto",
+                Need::MacroScript(_) => macro_mode == "auto",
+            };
+            if !ok {
+                warn!("écriture refusée ({doc_type} {action}) : {}", n.reason());
+                bail!("{}", script_guard::refusal(n, &script, &macro_mode));
+            }
+        }
+        Ok(())
+    }
+
+    async fn modify_document_raw(
         &self,
         doc_type: &str,
         action: &str,
@@ -238,11 +309,21 @@ impl FoundryHandle {
         index: bool,
         pack: Option<&str>,
     ) -> Result<Vec<Value>> {
+        self.get_collection_raw(doc_type, query, index, pack).await
+    }
+
+    async fn get_collection_raw(
+        &self,
+        doc_type: &str,
+        query: Map<String, Value>,
+        index: bool,
+        pack: Option<&str>,
+    ) -> Result<Vec<Value>> {
         let mut op = json!({ "query": query, "action": "get", "broadcast": false, "index": index });
         if let Some(p) = pack {
             op["pack"] = json!(p);
         }
-        let data = self.modify_document(doc_type, "get", op).await?;
+        let data = self.modify_document_raw(doc_type, "get", op).await?;
         Ok(data
             .get("result")
             .and_then(Value::as_array)
