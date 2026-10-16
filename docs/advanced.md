@@ -177,6 +177,22 @@ localhost). Signatures do not encrypt replies: Foundry's module socket channel
 is shared. In particular, `client_enrich` excludes GM secret blocks by default;
 requesting them explicitly sends them over that shared channel.
 
+### Code hidden in data
+
+Some modules run JavaScript stored in ordinary documents: Monk's Active Tiles
+actions (`runcode`, and every value field it evaluates), core Region behaviors
+`executeScript`/`executeMacro`, Mass Edit preset spawn scripts and Item Piles
+pile macros. The Gateway is a GM account, so Foundry would accept such writes;
+since 1.8 the Gateway inspects **every** write, nested scenes included, and
+refuses code-capable content unless the GM set the matching Companion setting
+to **Automatic**. Monk's Active Tiles actions pass when they are on a known-safe
+list and their values are numbers, dice, `+ 3`/`= 5` style operations or
+identifiers. The Gateway can never change the Companion's script settings
+itself, and the Companion reverts any such change made by a client that does
+not run the module. Triggering an existing tile or spawning a preset that
+contains code goes through the same Companion policy and confirmation dialog
+as `client_run_script`.
+
 ## Upgrading
 
 ### From 1.6 to 1.7

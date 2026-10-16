@@ -190,6 +190,24 @@ explicitement les transmet sur ce canal partagé.
 
 <a id="mises-a-jour"></a>
 
+### Du code caché dans les données
+
+Certains modules exécutent du JavaScript stocké dans des documents ordinaires :
+les actions de Monk's Active Tiles (`runcode`, et chaque champ de valeur qu'il
+évalue), les comportements de Region du cœur `executeScript`/`executeMacro`, les
+scripts de presets Mass Edit et les macros de piles Item Piles. La Gateway est
+un compte MJ, Foundry accepterait donc ces écritures ; depuis la 1.8, la Gateway
+inspecte **chaque** écriture, scènes imbriquées comprises, et refuse le contenu
+capable d'exécuter du code tant que le MJ n'a pas mis le réglage correspondant
+du Companion sur **Automatique**. Les actions Monk's Active Tiles passent si
+elles figurent dans une liste d'actions sûres et que leurs valeurs sont des
+nombres, des dés, des opérations du type `+ 3`/`= 5` ou des identifiants. La
+Gateway ne peut jamais modifier elle-même les réglages de script du Companion,
+et le Companion annule tout changement de ces réglages fait par un client qui
+ne charge pas le module. Déclencher une tuile existante ou poser un preset qui
+contient du code passe par la même politique et le même dialogue de
+confirmation que `client_run_script`.
+
 ## Mises à jour
 
 ### De la 1.6 à la 1.7
