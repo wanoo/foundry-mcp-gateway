@@ -1,0 +1,6 @@
+[advisories]
+# shortcut: crypto-bigint 0.5.5 n'arrive que par biscuit-auth 6.0 → elliptic-curve
+# 0.13 (sa voie secp256r1). Nos jetons sont Ed25519 (src/mcp/auth.rs) et notre
+# signature P-256 passe par p256 0.14 / crypto-bigint 0.7.10, déjà corrigé.
+# À retirer dès qu'une version de biscuit-auth tire elliptic-curve ≥ 0.14.
+ignore = ["RUSTSEC-2026-0387"]
