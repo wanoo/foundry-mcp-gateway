@@ -33,6 +33,13 @@ with companion 1.8.0 and 1.8.1.*
 - SECURITY.md now says that companion replies can be forged by a connected
   player.
 
+### Dependencies
+
+- RustSec advisories of 2026-11-06 fixed: rustls-webpki 0.103.16, webpki-roots
+  1.0.11, tokio 1.54.1, crypto-bigint 0.7.10, ctutils 0.4.8. Source builds now
+  need **Rust 1.87**. RUSTSEC-2026-0387 stays ignored for crypto-bigint 0.5.5,
+  reachable only through biscuit-auth's secp256r1 path, which is not used.
+
 ## [1.8.0] — 2026-10-16
 
 *Scene and loot prep — traps, switches, chests, merchants and prefabs — and the
