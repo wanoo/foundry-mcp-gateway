@@ -237,7 +237,7 @@ impl FoundryHandle {
                         .as_object()
                         .cloned()
                         .unwrap_or_default();
-                    for d in self.get_collection_raw("Setting", q, false, None).await? {
+                    for d in self.get_collection("Setting", q, false, None).await? {
                         if let Some(k) = d.get("key").and_then(Value::as_str) {
                             keys.push(k.to_string());
                         }
@@ -254,7 +254,7 @@ impl FoundryHandle {
                 .as_object()
                 .cloned()
                 .unwrap_or_default();
-            self.get_collection_raw("Setting", q, false, None)
+            self.get_collection("Setting", q, false, None)
                 .await
                 .ok()
                 .and_then(|v| v.first()?.get("value")?.as_str().map(String::from))
@@ -303,16 +303,6 @@ impl FoundryHandle {
 
     /// Lecture d'une collection monde (ou d'un pack) par socket get.
     pub async fn get_collection(
-        &self,
-        doc_type: &str,
-        query: Map<String, Value>,
-        index: bool,
-        pack: Option<&str>,
-    ) -> Result<Vec<Value>> {
-        self.get_collection_raw(doc_type, query, index, pack).await
-    }
-
-    async fn get_collection_raw(
         &self,
         doc_type: &str,
         query: Map<String, Value>,

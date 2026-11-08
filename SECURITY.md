@@ -59,7 +59,16 @@ what's at stake:
   write is inspected and such content is refused unless the GM set the
   companion's matching setting to « auto »; the gateway cannot change those
   settings, and the companion reverts changes made by clients that do not run
-  it. A bypass of this guard is in scope for a report.
+  it. A bypass of this guard is in scope for a report. Since 1.8.1 the guard
+  also covers rewriting the code of an existing Region behavior or macro, and
+  the gateway can no longer give the Assistant or Gamemaster role, nor change
+  `core.permissions`: accounts it creates have no password.
+- **Companion replies can be forged by any connected player.** Foundry relays
+  the module channel to every client and never says who sent a message, so a
+  player can answer a command before the GM's browser does. Signatures protect
+  what the companion *executes*, not what the gateway *reads back*: don't base
+  a decision on `client_*` results (`client_ask` answers, native rolls, page
+  text) when players are not trusted.
 - **`FOUNDRY_READONLY=1`** exists for untrusted or player-facing integrations:
   it exposes only read-only tools and refuses writes at dispatch. The 1.8
   catalogue has 76 with administration enabled, or 74 without it, before
