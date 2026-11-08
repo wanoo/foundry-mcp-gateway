@@ -152,32 +152,48 @@ async fn fetch_external_url(state: &McpState, url: &str) -> Result<(Vec<u8>, Str
         );
     }
 
+    // resolve_to_addrs : reqwest se connecte aux adresses VÉRIFIÉES ci-dessus,
+    // sans quoi un DNS piégé (rebinding) répondrait autre chose au second tour.
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        .resolve_to_addrs(&host, &addrs)
         .build()?;
-    let resp = client.get(parsed).send().await?;
+    let mut resp = client.get(parsed).send().await?;
     if resp.status().is_redirection() {
         bail!(
             "refusing to follow a redirect from '{host}' (status {}) — point 'url' at the final location",
             resp.status()
         );
     }
-    let resp = resp.error_for_status()?;
+    resp = resp.error_for_status()?;
     let content_type = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("application/octet-stream")
         .to_string();
-    let bytes = resp.bytes().await?;
-    if bytes.len() > MAX_FETCH_BYTES {
-        bail!(
-            "downloaded file is too large ({} MB, maximum {} MB)",
-            bytes.len() / 1_048_576,
+    let too_large = || {
+        anyhow!(
+            "downloaded file is too large (maximum {} MB)",
             MAX_FETCH_BYTES / 1_048_576
-        );
+        )
+    };
+    if resp
+        .content_length()
+        .is_some_and(|n| n > MAX_FETCH_BYTES as u64)
+    {
+        return Err(too_large());
     }
-    Ok((bytes.to_vec(), content_type))
+    // Lecture par morceaux : `bytes()` chargeait tout AVANT de vérifier la
+    // taille, et un fichier de plusieurs Go tuait la passerelle (mémoire).
+    let mut bytes = Vec::new();
+    while let Some(chunk) = resp.chunk().await? {
+        if bytes.len() + chunk.len() > MAX_FETCH_BYTES {
+            return Err(too_large());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok((bytes, content_type))
 }
 
 // Table alignée à la main : plus lisible ainsi, et les versions de rustfmt
@@ -204,9 +220,9 @@ fn build_definitions() -> Vec<ToolDef> {
             "enable":{"type":"array","items":{"type":"string"},"description":"module ids to enable"},
             "disable":{"type":"array","items":{"type":"string"},"description":"module ids to disable"}}})),
         ("manage_users",
-         "List the world's user accounts, or create/update/delete them: name, role (player/trusted/assistant/gamemaster), assigned character, colour. PASSWORDS ARE NOT HANDLED HERE — the GM sets them in Foundry (Configure Players); accounts created here start password-less, which Foundry allows.",
+         "List the world's user accounts, or create/update/delete them: name, role (player/trusted), assigned character, colour. Assistant and Gamemaster roles are refused: accounts created here start password-less, so the GM promotes them in Foundry (Configure Players), where passwords are set too.",
          json!({"type":"object","properties":{
-            "create":{"type":"array","description":"[{name, role?, character?, color?}] — role: player|trusted|assistant|gamemaster (default player)",
+            "create":{"type":"array","description":"[{name, role?, character?, color?}] — role: player|trusted (default player; assistant/gamemaster are refused)",
                       "items":{"type":"object"}},
             "update":{"type":"array","description":"[{_id or name, role?, character?, color?}]",
                       "items":{"type":"object"}},

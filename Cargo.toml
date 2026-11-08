@@ -1,6 +1,6 @@
 [package]
 name = "foundry-mcp-gateway"
-version = "1.8.0"
+version = "1.8.1"
 edition = "2024"
 description = "MCP server for Foundry VTT: a native socket client exposing 184 tools over streamable HTTP, with pluggable game-system modules."
 license = "MIT"
@@ -10,9 +10,9 @@ documentation = "https://github.com/wanoo/foundry-mcp-gateway/blob/main/docs/int
 readme = "README.md"
 keywords = ["mcp", "foundry-vtt", "ttrpg", "gateway", "llm"]
 categories = ["command-line-utilities", "game-development", "web-programming::http-server"]
-# edition 2024 exige Rust 1.85 : le dire ici donne une erreur claire au lieu
-# d'une avalanche d'erreurs de syntaxe sur une vieille toolchain.
-rust-version = "1.85"
+# 1.87 : minimum de crypto-bigint 0.7.10 / ctutils 0.4.8 (correctifs RustSec,
+# via p256). Le dire ici donne une erreur claire sur une vieille toolchain.
+rust-version = "1.87"
 # Le paquet publié n'a pas besoin de la doc annexe ni de la CI.
 exclude = ["/docs", "/.github", "/scripts", "/foundry-local", "*.md", "!README.md"]
 

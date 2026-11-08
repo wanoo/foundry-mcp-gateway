@@ -15,7 +15,7 @@ connaître les plateformes disponibles.
 
 Avec `cargo-binstall` installé, utilisez `cargo binstall foundry-mcp-gateway`.
 Pour compiler le paquet publié, utilisez `cargo install foundry-mcp-gateway`.
-La compilation des sources nécessite Rust **1.85 ou plus récent** :
+La compilation des sources nécessite Rust **1.87 ou plus récent** :
 
 ```sh
 git clone https://github.com/wanoo/foundry-mcp-gateway.git

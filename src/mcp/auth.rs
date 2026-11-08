@@ -42,11 +42,9 @@ pub enum Scope {
 }
 
 /// Comment la passerelle authentifie ses appelants.
+/// Jetons biscuit vérifiés contre la clé publique racine.
 #[derive(Clone)]
-pub enum McpAuth {
-    /// Jetons biscuit vérifiés contre la clé publique racine.
-    Biscuit(Box<PublicKey>),
-}
+pub struct McpAuth(Box<PublicKey>);
 
 impl McpAuth {
     /// Lit `MCP_ROOT_PUBLIC_KEY`, ou la dérive de `MCP_ROOT_PRIVATE_KEY`.
@@ -57,12 +55,12 @@ impl McpAuth {
         if let Ok(pk) = std::env::var("MCP_ROOT_PUBLIC_KEY")
             && !pk.trim().is_empty()
         {
-            return Ok(Self::Biscuit(Box::new(parse_public(pk.trim())?)));
+            return Ok(Self(Box::new(parse_public(pk.trim())?)));
         }
         if let Ok(sk) = std::env::var("MCP_ROOT_PRIVATE_KEY")
             && !sk.trim().is_empty()
         {
-            return Ok(Self::Biscuit(Box::new(
+            return Ok(Self(Box::new(
                 KeyPair::from(&parse_private(sk.trim())?).public(),
             )));
         }
@@ -78,8 +76,7 @@ impl McpAuth {
     /// Rend la portée qu'il déclare — c'est elle qui décide ensuite du
     /// catalogue exposé et de ce que le dispatch accepte d'exécuter.
     pub fn verify(&self, token: &str) -> Result<Scope> {
-        let Self::Biscuit(root) = self;
-        let biscuit = Biscuit::from_base64(token, *root.as_ref())
+        let biscuit = Biscuit::from_base64(token, *self.0)
             .map_err(|_| anyhow!("invalid or unreadable MCP token"))?;
 
         if let Some(revoked) = revoked_ids() {
@@ -237,7 +234,7 @@ mod tests {
     }
 
     fn auth(public_hex: &str) -> McpAuth {
-        McpAuth::Biscuit(Box::new(parse_public(public_hex).unwrap()))
+        McpAuth(Box::new(parse_public(public_hex).unwrap()))
     }
 
     #[test]

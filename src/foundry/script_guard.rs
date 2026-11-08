@@ -282,15 +282,61 @@ pub fn inspect(
             .collect();
         keys.extend(setting_keys.iter().cloned());
         for k in keys {
-            if let Some(rest) = k.strip_prefix(&format!("{COMPANION}."))
-                && rest != "rootPublicKey"
-            {
+            let companion = k
+                .strip_prefix(&format!("{COMPANION}."))
+                .is_some_and(|rest| rest != "rootPublicKey");
+            // core.permissions : donner SETTINGS_MODIFY aux joueurs leur
+            // ouvrirait les réglages d'exécution du compagnon.
+            if companion || k == "core.permissions" {
                 out.push(Need::Forbidden(format!(
-                    "the companion setting « {k} » can only be changed in Foundry, by the GM"
+                    "the setting « {k} » can only be changed in Foundry, by the GM"
                 )));
             }
         }
         return out;
+    }
+    if doc_type == "User" {
+        // Un compte créé par la passerelle n'a pas de mot de passe : en faire
+        // un Assistant ou un MJ, c'est ouvrir le monde à qui ouvre /join.
+        if items.iter().any(|d| {
+            d.get("role")
+                .and_then(Value::as_i64)
+                .is_some_and(|r| r >= 3)
+        }) {
+            out.push(Need::Forbidden(
+                "giving the Assistant or Gamemaster role is done in Foundry, not through MCP"
+                    .into(),
+            ));
+        }
+        return out;
+    }
+    if doc_type == "Macro" && action == "update" {
+        // Une macro déjà branchée (région executeMacro, MAT runmacro, pile
+        // Item Piles) s'exécute seule : changer son code, c'est en exécuter.
+        if items
+            .iter()
+            .any(|d| d.get("command").is_some() || d.get("type").is_some())
+        {
+            out.push(Need::MacroScript("rewriting a macro's code".into()));
+        }
+    }
+    if doc_type == "RegionBehavior" && action == "update" {
+        // Une mise à jour ne porte pas le `type` : on juge sur les champs.
+        for d in &items {
+            let sys = |k: &str| {
+                d.get("system")
+                    .and_then(|s| s.get(k))
+                    .or(d.get(&format!("system.{k}")[..]))
+            };
+            if sys("source").is_some() {
+                out.push(Need::Script("rewriting a Region behavior's script".into()));
+            }
+            if sys("uuid").is_some() {
+                out.push(Need::MacroScript(
+                    "changing a Region behavior's macro".into(),
+                ));
+            }
+        }
     }
     if doc_type == "RegionBehavior" {
         for d in &items {
@@ -448,5 +494,48 @@ mod tests {
         assert!(inspect("Setting", "update", &op, &keys).is_empty());
         let keys = vec!["core.time".to_string()];
         assert!(inspect("Setting", "update", &op, &keys).is_empty());
+        let keys = vec!["core.permissions".to_string()];
+        assert!(matches!(
+            inspect("Setting", "update", &op, &keys)[0],
+            Need::Forbidden(_)
+        ));
+    }
+
+    #[test]
+    fn pas_de_compte_assistant_ou_mj() {
+        let op = json!({"action":"create","data":[{"name":"Bob","role":4}]});
+        assert!(matches!(
+            inspect("User", "create", &op, &[])[0],
+            Need::Forbidden(_)
+        ));
+        let op = json!({"action":"update","updates":[{"_id":"u","role":3}]});
+        assert!(!inspect("User", "update", &op, &[]).is_empty());
+        let op = json!({"action":"create","data":[{"name":"Bob","role":1}]});
+        assert!(inspect("User", "create", &op, &[]).is_empty());
+        let op = json!({"action":"update","updates":[{"_id":"u","color":"#f00"}]});
+        assert!(inspect("User", "update", &op, &[]).is_empty());
+    }
+
+    #[test]
+    fn code_existant_reecrit_sans_type() {
+        let op = json!({"action":"update","updates":[{"_id":"b","system":{"source":"evil()"}}]});
+        assert!(matches!(
+            inspect("RegionBehavior", "update", &op, &[])[0],
+            Need::Script(_)
+        ));
+        let op = json!({"action":"update","updates":[{"_id":"b","system.uuid":"Macro.x"}]});
+        assert!(matches!(
+            inspect("RegionBehavior", "update", &op, &[])[0],
+            Need::MacroScript(_)
+        ));
+        let op = json!({"action":"update","updates":[{"_id":"b","disabled":true}]});
+        assert!(inspect("RegionBehavior", "update", &op, &[]).is_empty());
+        let op = json!({"action":"update","updates":[{"_id":"m","command":"evil()"}]});
+        assert!(matches!(
+            inspect("Macro", "update", &op, &[])[0],
+            Need::MacroScript(_)
+        ));
+        let op = json!({"action":"update","updates":[{"_id":"m","name":"Renommée"}]});
+        assert!(inspect("Macro", "update", &op, &[]).is_empty());
     }
 }

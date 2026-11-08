@@ -14,7 +14,7 @@ The release assets include SHA-256 files. Extract the archive and put
 
 With `cargo-binstall` installed, you can use `cargo binstall foundry-mcp-gateway`.
 To compile the published crate, use `cargo install foundry-mcp-gateway`.
-Source builds require Rust **1.85 or newer**:
+Source builds require Rust **1.87 or newer**:
 
 ```sh
 git clone https://github.com/wanoo/foundry-mcp-gateway.git
